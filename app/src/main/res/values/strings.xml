@@ -1,0 +1,21 @@
+<resources>
+    <string name="app_name">HHKungfu TV</string>
+    <string name="app_tagline">Phim Hoạt Hình 3D Trung Quốc</string>
+    <string name="nav_home">Trang Chủ</string>
+    <string name="nav_search">Tìm Kiếm</string>
+    <string name="nav_tu_tien">Tu Tiên</string>
+    <string name="nav_luyen_cap">Luyện Cấp</string>
+    <string name="nav_kiem_hiep">Kiếm Hiệp</string>
+    <string name="nav_moi_cap_nhat">Mới Cập Nhật</string>
+    <string name="nav_top_xem">Xem Nhiều</string>
+    <string name="nav_favorites">Yêu Thích</string>
+    <string name="btn_play">Xem Ngay</string>
+    <string name="btn_detail">Chi Tiết</string>
+    <string name="episodes_title">Danh Sách Tập</string>
+    <string name="server_title">Chọn Server</string>
+    <string name="search_hint">Nhập tên phim cần tìm...</string>
+    <string name="no_results">Không tìm thấy phim phù hợp</string>
+    <string name="loading">Đang tải dữ liệu...</string>
+    <string name="error_loading">Có lỗi khi tải dữ liệu, vui lòng thử lại.</string>
+    <string name="retry">Thử lại</string>
+</resources>

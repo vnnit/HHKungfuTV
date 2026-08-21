@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <!-- Background Gradient -->
+    <path
+        android:fillColor="#141414"
+        android:pathData="M0,0h320v180h-320z" />
+    <path
+        android:fillColor="#E50914"
+        android:pathData="M0,170h320v10h-320z" />
+    <!-- Kungfu Icon Accent -->
+    <path
+        android:fillColor="#E50914"
+        android:pathData="M60,40 L90,40 L110,90 L130,40 L160,40 L135,100 L160,140 L130,140 L110,95 L90,140 L60,140 L85,90 Z" />
+    <!-- Letter H -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M180,45 L195,45 L195,80 L225,80 L225,45 L240,45 L240,135 L225,135 L225,95 L195,95 L195,135 L180,135 Z" />
+    <!-- Gold 4K Accent Badge -->
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M255,45h50v20h-50z" />
+</vector>

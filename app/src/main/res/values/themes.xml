@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.HHKungfuTV" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/netflix_black</item>
+        <item name="android:statusBarColor">@color/netflix_black</item>
+        <item name="android:navigationBarColor">@color/netflix_black</item>
+    </style>
+</resources>
