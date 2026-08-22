@@ -1,6 +1,6 @@
 {
-  "versionCode": 19,
-  "versionName": "2.2.4",
+  "versionCode": 20,
+  "versionName": "2.2.5",
   "apkUrl": "https://github.com/vnnit/HHKungfuTV/releases/latest/download/HHKungfuTV.apk",
-  "changelog": "Tự động kích hoạt phát video chuyển tiếp từ vòng quay vàng sang nút tam giác phát liên tục 15s"
+  "changelog": "Tối ưu nạp phim siêu mượt không giật lag, tự động kích hoạt phím Xuống và Enter chuẩn xác"
 }

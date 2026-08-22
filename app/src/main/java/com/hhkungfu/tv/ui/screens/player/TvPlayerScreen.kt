@@ -139,51 +139,19 @@ fun TvPlayerScreen(
                     allow="autoplay *; fullscreen *; encrypted-media *; picture-in-picture *">
                 </iframe>
                 <script>
-                    function forcePlayVideo() {
+                    function tryNativePlay() {
                         var vids = document.getElementsByTagName('video');
                         for (var i = 0; i < vids.length; i++) {
-                            var v = vids[i];
-                            if (v.paused) {
-                                v.autoplay = true;
-                                v.muted = false;
-                                try {
-                                    var p = v.play();
-                                    if (p !== undefined) {
-                                        p.catch(function() {
-                                            v.muted = true;
-                                            v.play().then(function() {
-                                                setTimeout(function() { v.muted = false; }, 300);
-                                            });
-                                        });
-                                    }
-                                } catch(e) {}
-                            }
-                        }
-
-                        var ifr = document.getElementById('player-iframe');
-                        if (ifr && ifr.contentWindow) {
                             try {
-                                ifr.contentWindow.postMessage('{"event":"command","func":"playVideo"}', '*');
-                                ifr.contentWindow.postMessage('play', '*');
-                                ifr.contentWindow.postMessage({ type: 'play', action: 'play' }, '*');
-                                var doc = ifr.contentDocument || ifr.contentWindow.document;
-                                if (doc) {
-                                    var subVids = doc.getElementsByTagName('video');
-                                    for (var j = 0; j < subVids.length; j++) {
-                                        if (subVids[j].paused) {
-                                            subVids[j].autoplay = true;
-                                            subVids[j].play();
-                                        }
-                                    }
-                                }
+                                vids[i].autoplay = true;
+                                vids[i].muted = false;
+                                vids[i].play();
                             } catch(e) {}
                         }
                     }
                     window.addEventListener('load', function() {
-                        setInterval(forcePlayVideo, 400);
-                    });
-                    document.addEventListener('DOMContentLoaded', function() {
-                        setInterval(forcePlayVideo, 400);
+                        setTimeout(tryNativePlay, 1000);
+                        setTimeout(tryNativePlay, 2000);
                     });
                 </script>
             </body>
@@ -191,81 +159,55 @@ fun TvPlayerScreen(
         """.trimIndent()
     }
 
-    // Function to trigger Play on Android TV: Executes JS play, Down key (focus Play triangle), Enter key (clicks Play) and Media Play
-    fun autoPlayPulse(step: Int) {
+    // Exact Remote TV Sequence: Press DOWN to move focus onto Play Triangle -> Wait 250ms -> Press ENTER to Play
+    fun pressDownThenEnter() {
         val webView = webViewRef ?: return
         webView.post {
             try {
                 webView.requestFocus()
 
-                // 1. Direct JS Play check & play
-                val js = """
-                    (function() {
-                        var isPaused = false;
-                        var vids = document.getElementsByTagName('video');
-                        for (var i = 0; i < vids.length; i++) {
-                            if (vids[i].paused) {
-                                isPaused = true;
-                                try {
-                                    vids[i].autoplay = true;
-                                    vids[i].muted = false;
-                                    vids[i].play();
-                                } catch(e) {}
-                            }
-                        }
-                        var ifr = document.getElementById('player-iframe');
-                        if (ifr && ifr.contentWindow) {
-                            try {
-                                ifr.contentWindow.postMessage('{"event":"command","func":"playVideo"}', '*');
-                                ifr.contentWindow.postMessage('play', '*');
-                                ifr.contentWindow.postMessage({ type: 'play', action: 'play' }, '*');
-                                var doc = ifr.contentDocument || ifr.contentWindow.document;
-                                if (doc) {
-                                    var subVids = doc.getElementsByTagName('video');
-                                    for (var j = 0; j < subVids.length; j++) {
-                                        if (subVids[j].paused) {
-                                            isPaused = true;
-                                            subVids[j].autoplay = true;
-                                            subVids[j].play();
-                                        }
-                                    }
-                                }
-                            } catch(e) {}
-                        }
-                        return isPaused ? "PAUSED" : "PLAYING";
-                    })();
-                """.trimIndent()
+                // 1. Send DPAD_DOWN to move focus from top text down onto the Play triangle
+                val now = SystemClock.uptimeMillis()
+                webView.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN, 0))
+                webView.dispatchKeyEvent(KeyEvent(now, now + 40, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_DOWN, 0))
 
-                webView.evaluateJavascript(js) { result ->
-                    val shouldSendKeys = result == null || result.contains("PAUSED") || result.contains("null") || step <= 10
-                    if (shouldSendKeys) {
-                        // 2. DPAD_DOWN to move focus from top text down onto the Play triangle
-                        val now = SystemClock.uptimeMillis()
-                        webView.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN, 0))
-                        webView.dispatchKeyEvent(KeyEvent(now, now + 30, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_DOWN, 0))
+                // 2. Wait 250ms for Android TV focus box to settle on the Play button, then press ENTER / DPAD_CENTER
+                webView.postDelayed({
+                    try {
+                        val enterTime = SystemClock.uptimeMillis()
+                        webView.dispatchKeyEvent(KeyEvent(enterTime, enterTime, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, 0))
+                        webView.dispatchKeyEvent(KeyEvent(enterTime, enterTime + 40, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_CENTER, 0))
+                        webView.dispatchKeyEvent(KeyEvent(enterTime, enterTime, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER, 0))
+                        webView.dispatchKeyEvent(KeyEvent(enterTime, enterTime + 40, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER, 0))
+                        webView.dispatchKeyEvent(KeyEvent(enterTime, enterTime, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY, 0))
+                        webView.dispatchKeyEvent(KeyEvent(enterTime, enterTime + 40, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY, 0))
 
-                        // 3. DPAD_CENTER & ENTER to click the focused Play button
-                        val clickTime = now + 50
-                        webView.dispatchKeyEvent(KeyEvent(clickTime, clickTime, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, 0))
-                        webView.dispatchKeyEvent(KeyEvent(clickTime, clickTime + 30, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_CENTER, 0))
-                        webView.dispatchKeyEvent(KeyEvent(clickTime, clickTime, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER, 0))
-                        webView.dispatchKeyEvent(KeyEvent(clickTime, clickTime + 30, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER, 0))
-                        webView.dispatchKeyEvent(KeyEvent(clickTime, clickTime, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY, 0))
-                        webView.dispatchKeyEvent(KeyEvent(clickTime, clickTime + 30, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY, 0))
-
-                        // 4. Physical touch pulse at screen center
+                        // Touch center fallback
                         val width = if (webView.width > 0) webView.width.toFloat() else webView.resources.displayMetrics.widthPixels.toFloat()
                         val height = if (webView.height > 0) webView.height.toFloat() else webView.resources.displayMetrics.heightPixels.toFloat()
-                        val down = MotionEvent.obtain(clickTime, clickTime, MotionEvent.ACTION_DOWN, width / 2f, height / 2f, 0)
-                        val up = MotionEvent.obtain(clickTime, clickTime + 40, MotionEvent.ACTION_UP, width / 2f, height / 2f, 0)
+                        val down = MotionEvent.obtain(enterTime, enterTime, MotionEvent.ACTION_DOWN, width / 2f, height / 2f, 0)
+                        val up = MotionEvent.obtain(enterTime, enterTime + 40, MotionEvent.ACTION_UP, width / 2f, height / 2f, 0)
                         webView.dispatchTouchEvent(down)
                         webView.dispatchTouchEvent(up)
                         down.recycle()
                         up.recycle()
+
+                        // Direct JS play
+                        val js = """
+                            (function() {
+                                var vids = document.querySelectorAll('video');
+                                for (var i = 0; i < vids.length; i++) {
+                                    try { vids[i].muted = false; vids[i].play(); } catch(e) {}
+                                }
+                            })();
+                        """.trimIndent()
+                        webView.evaluateJavascript(js, null)
+                    } catch (e: Exception) {
+                        Log.e("TvPlayer", "Error in postDelayed enter", e)
                     }
-                }
+                }, 250)
             } catch (e: Exception) {
-                Log.e("TvPlayer", "Error autoPlayPulse", e)
+                Log.e("TvPlayer", "Error pressDownThenEnter", e)
             }
         }
     }
@@ -338,7 +280,7 @@ fun TvPlayerScreen(
                         KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
                         KeyEvent.KEYCODE_MEDIA_PLAY,
                         KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-                            autoPlayPulse(1)
+                            pressDownThenEnter()
                             true
                         }
 
@@ -385,7 +327,7 @@ fun TvPlayerScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "⚡ Đang kết nối & tự động phát: $episodeName (${if (sv == "2") "Thuyết Minh" else "Việt Sub"})...",
+                        text = "⚡ Đang kết nối: $episodeName (${if (sv == "2") "Thuyết Minh" else "Việt Sub"})...",
                         color = TextSecondary,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Medium
@@ -476,12 +418,14 @@ fun TvPlayerScreen(
 
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     super.onPageFinished(view, url)
-                                    // Automatic 20-step loop (runs every 750ms for 15s to cover both Spinner & Triangle stages)
+                                    // Smooth sequence: Let the spinner (Image 1) finish loading, then trigger Down -> Enter as soon as Triangle (Image 2) is ready
                                     scope.launch {
-                                        for (step in 1..20) {
-                                            delay(750)
-                                            autoPlayPulse(step)
-                                        }
+                                        delay(1200)
+                                        pressDownThenEnter()
+                                        delay(1500)
+                                        pressDownThenEnter()
+                                        delay(2000)
+                                        pressDownThenEnter()
                                     }
                                 }
                             }
@@ -489,13 +433,6 @@ fun TvPlayerScreen(
                             webChromeClient = object : WebChromeClient() {
                                 override fun getDefaultVideoPoster(): Bitmap? {
                                     return Bitmap.createBitmap(10, 10, Bitmap.Config.ARGB_8888)
-                                }
-
-                                override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                                    super.onProgressChanged(view, newProgress)
-                                    if (newProgress >= 60) {
-                                        autoPlayPulse(1)
-                                    }
                                 }
                             }
 
@@ -651,7 +588,7 @@ fun TvPlayerScreen(
                                 }
 
                                 FocusableTvItem(
-                                    onClick = { autoPlayPulse(1) },
+                                    onClick = { pressDownThenEnter() },
                                     shape = RoundedCornerShape(6.dp),
                                     focusedScale = 1.08f
                                 ) { isFocused ->
