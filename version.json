@@ -1,6 +1,6 @@
 {
-  "versionCode": 17,
-  "versionName": "2.2.2",
+  "versionCode": 18,
+  "versionName": "2.2.3",
   "apkUrl": "https://github.com/vnnit/HHKungfuTV/releases/latest/download/HHKungfuTV.apk",
-  "changelog": "Động cơ kích hoạt phát video chuyên dụng cho Android TV (Sony/Xiaomi/Google TV)"
+  "changelog": "Tự động kích hoạt chuỗi phím Xuống + Enter chuẩn Remote TV, tự phát video 100%"
 }
