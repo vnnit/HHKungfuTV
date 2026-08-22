@@ -1,6 +1,6 @@
 {
-  "versionCode": 14,
-  "versionName": "2.1.2",
+  "versionCode": 15,
+  "versionName": "2.2.0",
   "apkUrl": "https://github.com/vnnit/HHKungfuTV/releases/latest/download/HHKungfuTV.apk",
-  "changelog": "Tối ưu hệ thống hiển thị nhãn phiên bản Version Tag trên GitHub Actions"
+  "changelog": "Cấu hình chữ ký số thống nhất hhkungfu.keystore giúp tự động cài đè cập nhật mượt mà 100%"
 }

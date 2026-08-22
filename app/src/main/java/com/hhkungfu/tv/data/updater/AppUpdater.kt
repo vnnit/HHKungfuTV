@@ -2,6 +2,7 @@ package com.hhkungfu.tv.data.updater
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.util.Log
@@ -138,6 +139,7 @@ object AppUpdater {
 
     private fun installApk(context: Context, apkFile: File) {
         try {
+            apkFile.setReadable(true, false)
             val uri: Uri = FileProvider.getUriForFile(
                 context,
                 "${context.packageName}.fileprovider",
@@ -146,8 +148,16 @@ object AppUpdater {
 
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "application/vnd.android.package-archive")
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
+
+            val resInfoList = context.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+            for (resolveInfo in resInfoList) {
+                val targetPkg = resolveInfo.activityInfo.packageName
+                context.grantUriPermission(targetPkg, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+
             context.startActivity(intent)
         } catch (e: Exception) {
             Log.e("AppUpdater", "Error starting APK installation intent", e)

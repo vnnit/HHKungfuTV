@@ -12,8 +12,8 @@ android {
         applicationId = "com.hhkungfu.tv"
         minSdk = 24
         targetSdk = 34
-        versionCode = 14
-        versionName = "2.1.2"
+        versionCode = 15
+        versionName = "2.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -21,9 +21,22 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("hhkungfu.keystore")
+            storePassword = "hhkungfutv_password"
+            keyAlias = "hhkungfutv"
+            keyPassword = "hhkungfutv_password"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("release")
+        }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -65,7 +78,6 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     debugImplementation("androidx.compose.ui:ui-tooling")
-
 
     // Navigation Compose
     implementation("androidx.navigation:navigation-compose:2.8.0")
