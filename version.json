@@ -1,6 +1,6 @@
 {
-  "versionCode": 16,
-  "versionName": "2.2.1",
+  "versionCode": 17,
+  "versionName": "2.2.2",
   "apkUrl": "https://github.com/vnnit/HHKungfuTV/releases/latest/download/HHKungfuTV.apk",
-  "changelog": "Tăng cường bảo vệ lịch sử xem phim 4 tầng bộ nhớ, bảo toàn vĩnh viễn dữ liệu"
+  "changelog": "Động cơ kích hoạt phát video chuyên dụng cho Android TV (Sony/Xiaomi/Google TV)"
 }

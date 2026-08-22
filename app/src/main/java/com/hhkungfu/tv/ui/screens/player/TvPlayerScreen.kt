@@ -1,6 +1,7 @@
 package com.hhkungfu.tv.ui.screens.player
 
 import android.annotation.SuppressLint
+import android.graphics.Bitmap
 import android.os.SystemClock
 import android.util.Log
 import android.view.KeyEvent
@@ -141,7 +142,11 @@ fun TvPlayerScreen(
                     function triggerAllPlays() {
                         var vids = document.getElementsByTagName('video');
                         for (var i = 0; i < vids.length; i++) {
-                            try { vids[i].muted = false; vids[i].play(); } catch(e) {}
+                            try { 
+                                vids[i].autoplay = true;
+                                vids[i].muted = false;
+                                vids[i].play(); 
+                            } catch(e) {}
                         }
                         var ifr = document.getElementById('player-iframe');
                         if (ifr && ifr.contentWindow) {
@@ -149,18 +154,22 @@ fun TvPlayerScreen(
                                 ifr.contentWindow.postMessage('{"event":"command","func":"playVideo"}', '*');
                                 ifr.contentWindow.postMessage('play', '*');
                                 ifr.contentWindow.postMessage({ type: 'play', action: 'play' }, '*');
-                                var subVids = ifr.contentWindow.document.getElementsByTagName('video');
-                                for (var j = 0; j < subVids.length; j++) {
-                                    subVids[j].play();
+                                var doc = ifr.contentDocument || ifr.contentWindow.document;
+                                if (doc) {
+                                    var subVids = doc.getElementsByTagName('video');
+                                    for (var j = 0; j < subVids.length; j++) {
+                                        subVids[j].autoplay = true;
+                                        subVids[j].play();
+                                    }
                                 }
                             } catch(e) {}
                         }
                     }
                     window.addEventListener('load', function() {
-                        setInterval(triggerAllPlays, 600);
+                        setInterval(triggerAllPlays, 500);
                     });
                     document.addEventListener('DOMContentLoaded', function() {
-                        setInterval(triggerAllPlays, 600);
+                        setInterval(triggerAllPlays, 500);
                     });
                 </script>
             </body>
@@ -168,50 +177,78 @@ fun TvPlayerScreen(
         """.trimIndent()
     }
 
-    // Function to simulate physical hardware touch in the exact center of the TV / Phone screen
-    fun clickWebViewCenter() {
+    // Function to trigger Play on Android TV across multiple layers (JS + KeyEvents + Touch)
+    fun triggerPlayEngine() {
         val webView = webViewRef ?: return
-        val width = if (webView.width > 0) webView.width.toFloat() else webView.resources.displayMetrics.widthPixels.toFloat()
-        val height = if (webView.height > 0) webView.height.toFloat() else webView.resources.displayMetrics.heightPixels.toFloat()
-        val x = width / 2f
-        val y = height / 2f
+        webView.post {
+            try {
+                webView.requestFocus()
 
-        val downTime = SystemClock.uptimeMillis()
-        val eventTime = SystemClock.uptimeMillis()
+                // 1. Injected JavaScript direct play
+                val js = """
+                    (function() {
+                        function tryPlay() {
+                            var vids = document.querySelectorAll('video');
+                            for (var i = 0; i < vids.length; i++) {
+                                var v = vids[i];
+                                v.autoplay = true;
+                                v.muted = false;
+                                try {
+                                    var p = v.play();
+                                    if (p !== undefined) {
+                                        p.catch(function() {
+                                            v.muted = true;
+                                            v.play().then(function() {
+                                                setTimeout(function() { v.muted = false; }, 300);
+                                            });
+                                        });
+                                    }
+                                } catch(e) {}
+                            }
+                            var ifr = document.getElementById('player-iframe');
+                            if (ifr && ifr.contentWindow) {
+                                try {
+                                    ifr.contentWindow.postMessage('{"event":"command","func":"playVideo"}', '*');
+                                    ifr.contentWindow.postMessage('play', '*');
+                                    ifr.contentWindow.postMessage({ type: 'play', action: 'play' }, '*');
+                                } catch(e) {}
+                            }
+                            var btns = document.querySelectorAll('button, .play, .vjs-big-play-button, .jw-display-icon-container, [aria-label*="Play"]');
+                            for (var b = 0; b < btns.length; b++) {
+                                try { btns[b].click(); } catch(e) {}
+                            }
+                        }
+                        tryPlay();
+                    })();
+                """.trimIndent()
+                webView.evaluateJavascript(js, null)
 
-        val down = MotionEvent.obtain(downTime, eventTime, MotionEvent.ACTION_DOWN, x, y, 0)
-        val up = MotionEvent.obtain(downTime, eventTime + 60, MotionEvent.ACTION_UP, x, y, 0)
+                // 2. Hardware Touch Simulation at screen center
+                val width = if (webView.width > 0) webView.width.toFloat() else webView.resources.displayMetrics.widthPixels.toFloat()
+                val height = if (webView.height > 0) webView.height.toFloat() else webView.resources.displayMetrics.heightPixels.toFloat()
+                val x = width / 2f
+                val y = height / 2f
+                val now = SystemClock.uptimeMillis()
 
-        webView.dispatchTouchEvent(down)
-        webView.dispatchTouchEvent(up)
+                val down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0)
+                val up = MotionEvent.obtain(now, now + 50, MotionEvent.ACTION_UP, x, y, 0)
+                webView.dispatchTouchEvent(down)
+                webView.dispatchTouchEvent(up)
+                down.recycle()
+                up.recycle()
 
-        down.recycle()
-        up.recycle()
-
-        // Also trigger DPAD_CENTER and ENTER key events on the video element
-        val keyTime = SystemClock.uptimeMillis()
-        val keyDown = KeyEvent(keyTime, keyTime, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, 0)
-        val keyUp = KeyEvent(keyTime, keyTime + 40, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_CENTER, 0)
-        webView.dispatchKeyEvent(keyDown)
-        webView.dispatchKeyEvent(keyUp)
-
-        // Inject JS play
-        val jsPlay = """
-            (function() {
-                var vids = document.getElementsByTagName('video');
-                for (var i = 0; i < vids.length; i++) {
-                    try { vids[i].play(); } catch(e) {}
-                }
-                var ifr = document.getElementById('player-iframe');
-                if (ifr && ifr.contentWindow) {
-                    try {
-                        ifr.contentWindow.postMessage('play', '*');
-                        ifr.contentWindow.postMessage({ type: 'play', action: 'play' }, '*');
-                    } catch(e) {}
-                }
-            })();
-        """.trimIndent()
-        webView.evaluateJavascript(jsPlay, null)
+                // 3. Android TV Key Events (DPAD_CENTER, ENTER, MEDIA_PLAY)
+                val kNow = SystemClock.uptimeMillis()
+                webView.dispatchKeyEvent(KeyEvent(kNow, kNow, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, 0))
+                webView.dispatchKeyEvent(KeyEvent(kNow, kNow + 30, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_CENTER, 0))
+                webView.dispatchKeyEvent(KeyEvent(kNow, kNow, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY, 0))
+                webView.dispatchKeyEvent(KeyEvent(kNow, kNow + 30, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY, 0))
+                webView.dispatchKeyEvent(KeyEvent(kNow, kNow, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER, 0))
+                webView.dispatchKeyEvent(KeyEvent(kNow, kNow + 30, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER, 0))
+            } catch (e: Exception) {
+                Log.e("TvPlayer", "Error triggering play engine", e)
+            }
+        }
     }
 
     fun sendKeyEvent(keyCode: Int) {
@@ -282,7 +319,7 @@ fun TvPlayerScreen(
                         KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
                         KeyEvent.KEYCODE_MEDIA_PLAY,
                         KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-                            clickWebViewCenter()
+                            triggerPlayEngine()
                             true
                         }
 
@@ -405,7 +442,7 @@ fun TvPlayerScreen(
                                 cacheMode = WebSettings.LOAD_DEFAULT
                                 mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                                 setSupportMultipleWindows(false)
-                                javaScriptCanOpenWindowsAutomatically = false
+                                javaScriptCanOpenWindowsAutomatically = true
                             }
 
                             webViewClient = object : WebViewClient() {
@@ -421,19 +458,27 @@ fun TvPlayerScreen(
 
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     super.onPageFinished(view, url)
-                                    // Automatic sequence to start video playback as soon as the video player renders
+                                    // Robust auto-trigger pulse sequence on Android TV
                                     scope.launch {
-                                        delay(800)
-                                        clickWebViewCenter()
+                                        delay(500)
+                                        triggerPlayEngine()
+                                        delay(700)
+                                        triggerPlayEngine()
                                         delay(1000)
-                                        clickWebViewCenter()
-                                        delay(1400)
-                                        clickWebViewCenter()
+                                        triggerPlayEngine()
+                                        delay(1500)
+                                        triggerPlayEngine()
+                                        delay(2000)
+                                        triggerPlayEngine()
                                     }
                                 }
                             }
 
-                            webChromeClient = WebChromeClient()
+                            webChromeClient = object : WebChromeClient() {
+                                override fun getDefaultVideoPoster(): Bitmap? {
+                                    return Bitmap.createBitmap(10, 10, Bitmap.Config.ARGB_8888)
+                                }
+                            }
 
                             val embedHtml = generateEmbedHtml(stream.embedUrl)
                             loadDataWithBaseURL(
@@ -444,6 +489,7 @@ fun TvPlayerScreen(
                                 Constants.BASE_URL + "/"
                             )
                             webViewRef = this
+                            requestFocus()
                         }
                     },
                     update = { view ->
@@ -455,6 +501,7 @@ fun TvPlayerScreen(
                             "UTF-8",
                             Constants.BASE_URL + "/"
                         )
+                        view.requestFocus()
                     },
                     modifier = Modifier.fillMaxSize()
                 )
@@ -585,7 +632,7 @@ fun TvPlayerScreen(
                                 }
 
                                 FocusableTvItem(
-                                    onClick = { clickWebViewCenter() },
+                                    onClick = { triggerPlayEngine() },
                                     shape = RoundedCornerShape(6.dp),
                                     focusedScale = 1.08f
                                 ) { isFocused ->
