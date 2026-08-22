@@ -1,8 +1,10 @@
 name: Build & Release HHKungfu TV APK
+run-name: 🚀 Release ${{ github.ref_name }} (Build APK)
 
 on:
   push:
-    branches: [ main ]
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 concurrency:
@@ -64,16 +66,16 @@ jobs:
       - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.prep.outputs.version_name }}
-          name: HHKungfu TV v${{ steps.prep.outputs.version_name }}
+          tag_name: ${{ github.ref_name }}
+          name: HHKungfu TV ${{ github.ref_name }}
           body: |
-            ### 🎬 HHKungfu TV v${{ steps.prep.outputs.version_name }} (Build ${{ steps.prep.outputs.version_code }})
+            ### 🎬 HHKungfu TV ${{ github.ref_name }} (Build ${{ steps.prep.outputs.version_code }})
             
             **Tính năng mới & cập nhật:**
             ${{ steps.prep.outputs.changelog }}
             
             ---
-            📦 **Tải trực tiếp:** [HHKungfuTV.apk](https://github.com/${{ github.repository }}/releases/download/v${{ steps.prep.outputs.version_name }}/HHKungfuTV.apk)
+            📦 **Tải trực tiếp:** [HHKungfuTV.apk](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/HHKungfuTV.apk)
           files: |
             release_dist/HHKungfuTV.apk
             release_dist/version.json
