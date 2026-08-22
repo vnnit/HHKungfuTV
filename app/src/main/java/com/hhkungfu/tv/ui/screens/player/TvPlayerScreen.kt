@@ -8,7 +8,6 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -74,18 +73,6 @@ import com.hhkungfu.tv.utils.Constants
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-class WebAppBridge(private val onPlayState: (Boolean) -> Unit) {
-    @JavascriptInterface
-    fun onVideoPlaying() {
-        onPlayState(true)
-    }
-
-    @JavascriptInterface
-    fun onVideoPaused() {
-        onPlayState(false)
-    }
-}
-
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun TvPlayerScreen(
@@ -102,7 +89,6 @@ fun TvPlayerScreen(
     var showControls by remember { mutableStateOf(false) }
     var seekMessage by remember { mutableStateOf<String?>(null) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
-    var isVideoPlaying by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -153,22 +139,25 @@ fun TvPlayerScreen(
                     allow="autoplay *; fullscreen *; encrypted-media *; picture-in-picture *">
                 </iframe>
                 <script>
-                    function attachVideoListeners() {
+                    function forcePlayVideo() {
                         var vids = document.getElementsByTagName('video');
                         for (var i = 0; i < vids.length; i++) {
                             var v = vids[i];
-                            v.autoplay = true;
-                            v.muted = false;
-                            v.addEventListener('playing', function() {
-                                if (window.AndroidBridge) window.AndroidBridge.onVideoPlaying();
-                            });
-                            v.addEventListener('play', function() {
-                                if (window.AndroidBridge) window.AndroidBridge.onVideoPlaying();
-                            });
-                            v.addEventListener('pause', function() {
-                                if (window.AndroidBridge) window.AndroidBridge.onVideoPaused();
-                            });
-                            try { v.play(); } catch(e) {}
+                            if (v.paused) {
+                                v.autoplay = true;
+                                v.muted = false;
+                                try {
+                                    var p = v.play();
+                                    if (p !== undefined) {
+                                        p.catch(function() {
+                                            v.muted = true;
+                                            v.play().then(function() {
+                                                setTimeout(function() { v.muted = false; }, 300);
+                                            });
+                                        });
+                                    }
+                                } catch(e) {}
+                            }
                         }
 
                         var ifr = document.getElementById('player-iframe');
@@ -181,21 +170,20 @@ fun TvPlayerScreen(
                                 if (doc) {
                                     var subVids = doc.getElementsByTagName('video');
                                     for (var j = 0; j < subVids.length; j++) {
-                                        subVids[j].autoplay = true;
-                                        subVids[j].addEventListener('playing', function() {
-                                            if (window.AndroidBridge) window.AndroidBridge.onVideoPlaying();
-                                        });
-                                        try { subVids[j].play(); } catch(e) {}
+                                        if (subVids[j].paused) {
+                                            subVids[j].autoplay = true;
+                                            subVids[j].play();
+                                        }
                                     }
                                 }
                             } catch(e) {}
                         }
                     }
                     window.addEventListener('load', function() {
-                        setInterval(attachVideoListeners, 500);
+                        setInterval(forcePlayVideo, 400);
                     });
                     document.addEventListener('DOMContentLoaded', function() {
-                        setInterval(attachVideoListeners, 500);
+                        setInterval(forcePlayVideo, 400);
                     });
                 </script>
             </body>
@@ -203,32 +191,27 @@ fun TvPlayerScreen(
         """.trimIndent()
     }
 
-    // Function to simulate D-Pad Down (moving focus onto Play triangle) followed by Enter / Play Click
-    fun performDownThenEnter() {
+    // Function to trigger Play on Android TV: Executes JS play, Down key (focus Play triangle), Enter key (clicks Play) and Media Play
+    fun autoPlayPulse(step: Int) {
         val webView = webViewRef ?: return
-        if (isVideoPlaying) return
-
         webView.post {
             try {
                 webView.requestFocus()
 
-                // 1. Direct JS Play invocation
+                // 1. Direct JS Play check & play
                 val js = """
                     (function() {
-                        var vids = document.querySelectorAll('video');
+                        var isPaused = false;
+                        var vids = document.getElementsByTagName('video');
                         for (var i = 0; i < vids.length; i++) {
-                            var v = vids[i];
-                            v.autoplay = true;
-                            v.muted = false;
-                            v.play().then(function() {
-                                if (window.AndroidBridge) window.AndroidBridge.onVideoPlaying();
-                            }).catch(function() {
-                                v.muted = true;
-                                v.play().then(function() {
-                                    setTimeout(function() { v.muted = false; }, 300);
-                                    if (window.AndroidBridge) window.AndroidBridge.onVideoPlaying();
-                                });
-                            });
+                            if (vids[i].paused) {
+                                isPaused = true;
+                                try {
+                                    vids[i].autoplay = true;
+                                    vids[i].muted = false;
+                                    vids[i].play();
+                                } catch(e) {}
+                            }
                         }
                         var ifr = document.getElementById('player-iframe');
                         if (ifr && ifr.contentWindow) {
@@ -236,39 +219,53 @@ fun TvPlayerScreen(
                                 ifr.contentWindow.postMessage('{"event":"command","func":"playVideo"}', '*');
                                 ifr.contentWindow.postMessage('play', '*');
                                 ifr.contentWindow.postMessage({ type: 'play', action: 'play' }, '*');
+                                var doc = ifr.contentDocument || ifr.contentWindow.document;
+                                if (doc) {
+                                    var subVids = doc.getElementsByTagName('video');
+                                    for (var j = 0; j < subVids.length; j++) {
+                                        if (subVids[j].paused) {
+                                            isPaused = true;
+                                            subVids[j].autoplay = true;
+                                            subVids[j].play();
+                                        }
+                                    }
+                                }
                             } catch(e) {}
                         }
-                        var btns = document.querySelectorAll('button, .play, .vjs-big-play-button, .jw-display-icon-container, [aria-label*="Play"]');
-                        for (var b = 0; b < btns.length; b++) {
-                            try { btns[b].click(); } catch(e) {}
-                        }
+                        return isPaused ? "PAUSED" : "PLAYING";
                     })();
                 """.trimIndent()
-                webView.evaluateJavascript(js, null)
 
-                // 2. DPAD_DOWN to move focus from top text down onto the Play triangle
-                val now = SystemClock.uptimeMillis()
-                webView.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN, 0))
-                webView.dispatchKeyEvent(KeyEvent(now, now + 30, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_DOWN, 0))
+                webView.evaluateJavascript(js) { result ->
+                    val shouldSendKeys = result == null || result.contains("PAUSED") || result.contains("null") || step <= 10
+                    if (shouldSendKeys) {
+                        // 2. DPAD_DOWN to move focus from top text down onto the Play triangle
+                        val now = SystemClock.uptimeMillis()
+                        webView.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN, 0))
+                        webView.dispatchKeyEvent(KeyEvent(now, now + 30, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_DOWN, 0))
 
-                // 3. DPAD_CENTER / ENTER to click the focused Play button
-                val enterTime = now + 60
-                webView.dispatchKeyEvent(KeyEvent(enterTime, enterTime, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, 0))
-                webView.dispatchKeyEvent(KeyEvent(enterTime, enterTime + 30, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_CENTER, 0))
-                webView.dispatchKeyEvent(KeyEvent(enterTime, enterTime, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER, 0))
-                webView.dispatchKeyEvent(KeyEvent(enterTime, enterTime + 30, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER, 0))
+                        // 3. DPAD_CENTER & ENTER to click the focused Play button
+                        val clickTime = now + 50
+                        webView.dispatchKeyEvent(KeyEvent(clickTime, clickTime, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, 0))
+                        webView.dispatchKeyEvent(KeyEvent(clickTime, clickTime + 30, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_CENTER, 0))
+                        webView.dispatchKeyEvent(KeyEvent(clickTime, clickTime, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER, 0))
+                        webView.dispatchKeyEvent(KeyEvent(clickTime, clickTime + 30, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER, 0))
+                        webView.dispatchKeyEvent(KeyEvent(clickTime, clickTime, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY, 0))
+                        webView.dispatchKeyEvent(KeyEvent(clickTime, clickTime + 30, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY, 0))
 
-                // 4. Touch center
-                val width = if (webView.width > 0) webView.width.toFloat() else webView.resources.displayMetrics.widthPixels.toFloat()
-                val height = if (webView.height > 0) webView.height.toFloat() else webView.resources.displayMetrics.heightPixels.toFloat()
-                val down = MotionEvent.obtain(enterTime, enterTime, MotionEvent.ACTION_DOWN, width / 2f, height / 2f, 0)
-                val up = MotionEvent.obtain(enterTime, enterTime + 50, MotionEvent.ACTION_UP, width / 2f, height / 2f, 0)
-                webView.dispatchTouchEvent(down)
-                webView.dispatchTouchEvent(up)
-                down.recycle()
-                up.recycle()
+                        // 4. Physical touch pulse at screen center
+                        val width = if (webView.width > 0) webView.width.toFloat() else webView.resources.displayMetrics.widthPixels.toFloat()
+                        val height = if (webView.height > 0) webView.height.toFloat() else webView.resources.displayMetrics.heightPixels.toFloat()
+                        val down = MotionEvent.obtain(clickTime, clickTime, MotionEvent.ACTION_DOWN, width / 2f, height / 2f, 0)
+                        val up = MotionEvent.obtain(clickTime, clickTime + 40, MotionEvent.ACTION_UP, width / 2f, height / 2f, 0)
+                        webView.dispatchTouchEvent(down)
+                        webView.dispatchTouchEvent(up)
+                        down.recycle()
+                        up.recycle()
+                    }
+                }
             } catch (e: Exception) {
-                Log.e("TvPlayer", "Error performDownThenEnter", e)
+                Log.e("TvPlayer", "Error autoPlayPulse", e)
             }
         }
     }
@@ -294,7 +291,6 @@ fun TvPlayerScreen(
     }
 
     LaunchedEffect(postId, chapterSt, serverType, sv) {
-        isVideoPlaying = false
         viewModel.loadStream(postId, chapterSt, movieTitle, episodeName, serverType, sv)
         HistoryManager.saveWatchHistory(
             context = context,
@@ -342,7 +338,7 @@ fun TvPlayerScreen(
                         KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
                         KeyEvent.KEYCODE_MEDIA_PLAY,
                         KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-                            performDownThenEnter()
+                            autoPlayPulse(1)
                             true
                         }
 
@@ -413,7 +409,6 @@ fun TvPlayerScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         FocusableTvItem(
                             onClick = {
-                                isVideoPlaying = false
                                 viewModel.loadStream(postId, chapterSt, movieTitle, episodeName, serverType, sv)
                             }
                         ) {
@@ -469,14 +464,9 @@ fun TvPlayerScreen(
                                 javaScriptCanOpenWindowsAutomatically = true
                             }
 
-                            addJavascriptInterface(WebAppBridge { playing ->
-                                isVideoPlaying = playing
-                            }, "AndroidBridge")
-
                             webViewClient = object : WebViewClient() {
                                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                                    val url = request?.url?.toString() ?: ""
-                                    return !url.contains("streamfree") && !url.contains("hhkungfu")
+                                    return false
                                 }
 
                                 override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
@@ -486,12 +476,11 @@ fun TvPlayerScreen(
 
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     super.onPageFinished(view, url)
-                                    // Robust auto-trigger pulse loop: simulates DOWN + ENTER periodically until video starts
+                                    // Automatic 20-step loop (runs every 750ms for 15s to cover both Spinner & Triangle stages)
                                     scope.launch {
-                                        for (i in 1..25) {
-                                            delay(600)
-                                            if (isVideoPlaying) break
-                                            performDownThenEnter()
+                                        for (step in 1..20) {
+                                            delay(750)
+                                            autoPlayPulse(step)
                                         }
                                     }
                                 }
@@ -500,6 +489,13 @@ fun TvPlayerScreen(
                             webChromeClient = object : WebChromeClient() {
                                 override fun getDefaultVideoPoster(): Bitmap? {
                                     return Bitmap.createBitmap(10, 10, Bitmap.Config.ARGB_8888)
+                                }
+
+                                override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                                    super.onProgressChanged(view, newProgress)
+                                    if (newProgress >= 60) {
+                                        autoPlayPulse(1)
+                                    }
                                 }
                             }
 
@@ -655,7 +651,7 @@ fun TvPlayerScreen(
                                 }
 
                                 FocusableTvItem(
-                                    onClick = { performDownThenEnter() },
+                                    onClick = { autoPlayPulse(1) },
                                     shape = RoundedCornerShape(6.dp),
                                     focusedScale = 1.08f
                                 ) { isFocused ->
