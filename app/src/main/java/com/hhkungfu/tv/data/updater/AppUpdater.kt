@@ -24,9 +24,12 @@ data class UpdateInfo(
 )
 
 object AppUpdater {
-    private const val UPDATE_JSON_URL = "https://app.plzmail.net/version.json"
-    private const val UPDATE_JSON_ALT = "https://app.plzmail.net/update.json"
-    const val DEFAULT_APK_URL = "https://app.plzmail.net/HHKungfuTV.apk"
+    // Primary: GitHub Raw version.json
+    private const val GITHUB_VERSION_JSON = "https://raw.githubusercontent.com/vnnit/HHKungfuTV/main/version.json"
+    private const val GITHUB_RELEASE_JSON = "https://github.com/vnnit/HHKungfuTV/releases/latest/download/version.json"
+    private const val FALLBACK_JSON = "https://app.plzmail.net/version.json"
+
+    const val DEFAULT_APK_URL = "https://github.com/vnnit/HHKungfuTV/releases/latest/download/HHKungfuTV.apk"
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -50,52 +53,30 @@ object AppUpdater {
     suspend fun checkForUpdate(context: Context): UpdateInfo? = withContext(Dispatchers.IO) {
         val currentVersionCode = getCurrentVersionCode(context)
 
-        // 1. Try version.json or update.json
-        val jsonUrls = listOf(UPDATE_JSON_URL, UPDATE_JSON_ALT)
+        // 1. Try GitHub Raw, GitHub Release, and fallback
+        val jsonUrls = listOf(GITHUB_VERSION_JSON, GITHUB_RELEASE_JSON, FALLBACK_JSON)
         for (url in jsonUrls) {
             try {
                 val request = Request.Builder()
                     .url(url)
                     .header("User-Agent", "Mozilla/5.0")
+                    .header("Cache-Control", "no-cache")
                     .build()
 
                 val response = client.newCall(request).execute()
                 if (response.isSuccessful) {
-                    val body = response.body?.string() ?: ""
-                    val updateInfo = Gson().fromJson(body, UpdateInfo::class.java)
-                    if (updateInfo != null && updateInfo.versionCode > currentVersionCode) {
-                        val finalApkUrl = if (updateInfo.apkUrl.isNotEmpty()) updateInfo.apkUrl else DEFAULT_APK_URL
-                        return@withContext updateInfo.copy(apkUrl = finalApkUrl)
+                    val body = response.body?.string()
+                    if (!body.isNullOrEmpty()) {
+                        val updateInfo = Gson().fromJson(body, UpdateInfo::class.java)
+                        if (updateInfo != null && updateInfo.versionCode > currentVersionCode) {
+                            val apkUrl = if (updateInfo.apkUrl.isNotEmpty()) updateInfo.apkUrl else DEFAULT_APK_URL
+                            return@withContext updateInfo.copy(apkUrl = apkUrl)
+                        }
                     }
                 }
             } catch (e: Exception) {
-                Log.d("AppUpdater", "Check json update from $url failed: ${e.message}")
+                Log.w("AppUpdater", "Error checking update from $url: ${e.message}")
             }
-        }
-
-        // 2. Fallback: check if direct APK file exists on server
-        val directApkUrls = listOf(
-            "https://app.plzmail.net/HHKungfuTV.apk",
-            "https://app.plzmail.net/app.apk",
-            "https://app.plzmail.net/app-release.apk"
-        )
-        for (apkUrl in directApkUrls) {
-            try {
-                val request = Request.Builder()
-                    .url(apkUrl)
-                    .head()
-                    .header("User-Agent", "Mozilla/5.0")
-                    .build()
-                val response = client.newCall(request).execute()
-                if (response.isSuccessful && (response.body?.contentLength() ?: 0) > 1000000) {
-                    return@withContext UpdateInfo(
-                        versionCode = currentVersionCode + 1,
-                        versionName = "Bản mới nhất",
-                        apkUrl = apkUrl,
-                        changelog = "Cập nhật ứng dụng từ server plzmail"
-                    )
-                }
-            } catch (_: Exception) {}
         }
 
         return@withContext null
@@ -103,12 +84,13 @@ object AppUpdater {
 
     suspend fun downloadAndInstallApk(
         context: Context,
-        apkUrl: String = DEFAULT_APK_URL,
-        onProgress: (Int) -> Unit
+        apkUrl: String,
+        onProgress: (Int) -> Unit = {}
     ): Boolean = withContext(Dispatchers.IO) {
         try {
+            val targetUrl = apkUrl.ifEmpty { DEFAULT_APK_URL }
             val request = Request.Builder()
-                .url(apkUrl)
+                .url(targetUrl)
                 .header("User-Agent", "Mozilla/5.0")
                 .build()
 
@@ -118,57 +100,57 @@ object AppUpdater {
             val body = response.body ?: return@withContext false
             val contentLength = body.contentLength()
 
-            val apkFile = File(context.cacheDir, "update.apk")
+            val downloadsDir = File(context.cacheDir, "updates")
+            if (!downloadsDir.exists()) downloadsDir.mkdirs()
+
+            val apkFile = File(downloadsDir, "update.apk")
             if (apkFile.exists()) apkFile.delete()
 
-            val inputStream = body.byteStream()
-            val outputStream = FileOutputStream(apkFile)
+            body.byteStream().use { input ->
+                FileOutputStream(apkFile).use { output ->
+                    val buffer = ByteArray(8 * 1024)
+                    var bytesRead: Int
+                    var totalBytesRead = 0L
 
-            val buffer = ByteArray(16 * 1024)
-            var bytesRead: Int
-            var totalBytesRead = 0L
-
-            while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                outputStream.write(buffer, 0, bytesRead)
-                totalBytesRead += bytesRead
-                if (contentLength > 0) {
-                    val progress = ((totalBytesRead * 100) / contentLength).toInt()
-                    withContext(Dispatchers.Main) {
-                        onProgress(progress)
+                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                        output.write(buffer, 0, bytesRead)
+                        totalBytesRead += bytesRead
+                        if (contentLength > 0) {
+                            val progress = ((totalBytesRead * 100) / contentLength).toInt()
+                            withContext(Dispatchers.Main) {
+                                onProgress(progress)
+                            }
+                        }
                     }
+                    output.flush()
                 }
             }
 
-            outputStream.flush()
-            outputStream.close()
-            inputStream.close()
-
-            // Trigger installation
             withContext(Dispatchers.Main) {
                 installApk(context, apkFile)
             }
             return@withContext true
         } catch (e: Exception) {
-            Log.e("AppUpdater", "Download update failed", e)
+            Log.e("AppUpdater", "Error downloading APK", e)
             return@withContext false
         }
     }
 
-    fun installApk(context: Context, apkFile: File) {
+    private fun installApk(context: Context, apkFile: File) {
         try {
-            val apkUri: Uri = FileProvider.getUriForFile(
+            val uri: Uri = FileProvider.getUriForFile(
                 context,
                 "${context.packageName}.fileprovider",
                 apkFile
             )
 
             val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(apkUri, "application/vnd.android.package-archive")
+                setDataAndType(uri, "application/vnd.android.package-archive")
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
             }
             context.startActivity(intent)
         } catch (e: Exception) {
-            Log.e("AppUpdater", "Install APK failed", e)
+            Log.e("AppUpdater", "Error starting APK installation intent", e)
         }
     }
 }
