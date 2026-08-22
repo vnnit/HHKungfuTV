@@ -1,6 +1,6 @@
 {
-  "versionCode": 13,
-  "versionName": "2.1.1",
+  "versionCode": 14,
+  "versionName": "2.1.2",
   "apkUrl": "https://github.com/vnnit/HHKungfuTV/releases/latest/download/HHKungfuTV.apk",
-  "changelog": "Tự động phát video 100%, nâng cấp hệ thống CI/CD tự động build và cập nhật qua GitHub Releases"
+  "changelog": "Tối ưu hệ thống hiển thị nhãn phiên bản Version Tag trên GitHub Actions"
 }
