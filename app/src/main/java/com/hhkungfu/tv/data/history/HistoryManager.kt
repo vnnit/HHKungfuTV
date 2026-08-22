@@ -2,6 +2,7 @@ package com.hhkungfu.tv.data.history
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Environment
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -31,9 +32,12 @@ object HistoryManager {
     }
 
     /**
-     * Lưu tập phim vừa xem vào lịch sử.
-     * Lưu đồng thời vào SharedPreferences + File Backup bền vững trong hệ thống.
-     * Tự động xóa các mục cũ quá 30 ngày.
+     * Lưu tập phim vừa xem vào lịch sử (Đa tầng 4 lớp bảo vệ).
+     * 1. SharedPreferences (Truy xuất tức thì)
+     * 2. context.filesDir (File nội bộ app)
+     * 3. context.getExternalFilesDir (Bộ nhớ ngoài của app)
+     * 4. /sdcard/Download/ (Bộ nhớ chung hệ thống - Vĩnh viễn không mất kể cả khi gỡ app)
+     * Tự động lọc bỏ các mục cũ quá 30 ngày.
      */
     fun saveWatchHistory(
         context: Context,
@@ -51,9 +55,9 @@ object HistoryManager {
         // 1. Lọc bỏ các mục quá 30 ngày
         val filteredList = currentList.filter { it.timestamp >= expirationTime }.toMutableList()
 
-        // 2. Xóa mục cùng movieUrl và episodeSlug nếu đã có trước đó để cập nhật lên đầu
+        // 2. Xóa mục cùng movieTitle + episodeSlug + sv nếu đã có trước đó để đưa lên đầu
         filteredList.removeAll { 
-            (it.movieUrl == movieUrl || it.movieTitle == movieTitle) && 
+            (it.movieUrl == movieUrl || it.movieTitle.equals(movieTitle, ignoreCase = true)) && 
             it.episodeSlug == episodeSlug && 
             it.sv == sv 
         }
@@ -70,54 +74,78 @@ object HistoryManager {
         )
         filteredList.add(0, newItem)
 
-        // Giới hạn lưu tối đa 300 mục gần nhất (dung lượng < 50KB)
+        // Giới hạn lưu tối đa 300 mục gần nhất (< 50KB)
         val trimmedList = filteredList.take(300)
         val json = gson.toJson(trimmedList)
 
-        // 1. Lưu vào SharedPreferences bền vững
+        // 1. Lưu vào SharedPreferences
         getPrefs(context).edit().putString(KEY_HISTORY, json).apply()
 
-        // 2. Lưu dự phòng vào File nội bộ vĩnh viễn (không bao giờ mất khi update)
+        // 2. Lưu vào File nội bộ app
         try {
             val backupFile = File(context.filesDir, BACKUP_FILE_NAME)
             backupFile.writeText(json)
+        } catch (_: Exception) {}
 
-            // Lưu thêm vào External Files nếu có
+        // 3. Lưu vào External Files Dir
+        try {
             val extDir = context.getExternalFilesDir(null)
             if (extDir != null) {
-                val extBackupFile = File(extDir, BACKUP_FILE_NAME)
-                extBackupFile.writeText(json)
+                File(extDir, BACKUP_FILE_NAME).writeText(json)
             }
-        } catch (e: Exception) {
-            Log.e("HistoryManager", "Error saving backup file", e)
-        }
+        } catch (_: Exception) {}
+
+        // 4. Lưu vào Thư mục Download công cộng (Bảo tồn vĩnh viễn kể cả khi gỡ app cài lại)
+        try {
+            val publicDownloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (publicDownloadDir != null && (publicDownloadDir.exists() || publicDownloadDir.mkdirs())) {
+                File(publicDownloadDir, BACKUP_FILE_NAME).writeText(json)
+            }
+        } catch (_: Exception) {}
     }
 
     /**
-     * Lấy toàn bộ danh sách lịch sử xem phim (đã lọc các mục quá 30 ngày)
-     * Có cơ chế tự động phục hồi từ Backup File nếu SharedPreferences bị rỗng.
+     * Lấy toàn bộ danh sách lịch sử xem phim.
+     * Cơ chế tự động phục hồi thông minh theo thứ tự 4 tầng nếu phát hiện dữ liệu bị rỗng.
      */
     fun getWatchHistory(context: Context): List<WatchHistoryItem> {
         var json = getPrefs(context).getString(KEY_HISTORY, null)
 
-        // Nếu SharedPreferences trống, thử khôi phục từ File Backup bền vững
+        // Phục hồi từ các tầng dự phòng nếu SharedPreferences bị rỗng
         if (json.isNullOrEmpty()) {
+            // Tầng 2: filesDir
             try {
-                val backupFile = File(context.filesDir, BACKUP_FILE_NAME)
-                if (backupFile.exists()) {
-                    json = backupFile.readText()
-                    // Khôi phục lại vào SharedPreferences
-                    getPrefs(context).edit().putString(KEY_HISTORY, json).apply()
-                } else {
-                    val extDir = context.getExternalFilesDir(null)
-                    val extBackupFile = if (extDir != null) File(extDir, BACKUP_FILE_NAME) else null
-                    if (extBackupFile != null && extBackupFile.exists()) {
-                        json = extBackupFile.readText()
-                        getPrefs(context).edit().putString(KEY_HISTORY, json).apply()
-                    }
+                val f1 = File(context.filesDir, BACKUP_FILE_NAME)
+                if (f1.exists() && f1.length() > 0) {
+                    json = f1.readText()
                 }
-            } catch (e: Exception) {
-                Log.e("HistoryManager", "Error reading backup file", e)
+            } catch (_: Exception) {}
+
+            // Tầng 3: getExternalFilesDir
+            if (json.isNullOrEmpty()) {
+                try {
+                    val extDir = context.getExternalFilesDir(null)
+                    val f2 = if (extDir != null) File(extDir, BACKUP_FILE_NAME) else null
+                    if (f2 != null && f2.exists() && f2.length() > 0) {
+                        json = f2.readText()
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // Tầng 4: Public Downloads Directory (Dành riêng cho trường hợp vừa gỡ app cài mới lại)
+            if (json.isNullOrEmpty()) {
+                try {
+                    val publicDownloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                    val f3 = if (publicDownloadDir != null) File(publicDownloadDir, BACKUP_FILE_NAME) else null
+                    if (f3 != null && f3.exists() && f3.length() > 0) {
+                        json = f3.readText()
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // Nếu tìm thấy ở bất kỳ tầng nào, tự động khôi phục lại vào SharedPreferences
+            if (!json.isNullOrEmpty()) {
+                getPrefs(context).edit().putString(KEY_HISTORY, json).apply()
             }
         }
 
@@ -133,9 +161,6 @@ object HistoryManager {
         }
     }
 
-    /**
-     * Kiểm tra xem một tập phim cụ thể đã được xem chưa
-     */
     fun isEpisodeWatched(context: Context, movieTitle: String, episodeSlug: String, sv: String): Boolean {
         val history = getWatchHistory(context)
         return history.any { 
@@ -145,9 +170,6 @@ object HistoryManager {
         }
     }
 
-    /**
-     * Lấy tập phim xem gần nhất của một bộ phim
-     */
     fun getLastWatchedEpisode(context: Context, movieTitle: String): WatchHistoryItem? {
         val history = getWatchHistory(context)
         return history.firstOrNull { 
@@ -155,9 +177,6 @@ object HistoryManager {
         }
     }
 
-    /**
-     * Xóa toàn bộ lịch sử
-     */
     fun clearAllHistory(context: Context) {
         getPrefs(context).edit().remove(KEY_HISTORY).apply()
         try {
@@ -165,6 +184,10 @@ object HistoryManager {
             val extDir = context.getExternalFilesDir(null)
             if (extDir != null) {
                 File(extDir, BACKUP_FILE_NAME).delete()
+            }
+            val publicDownloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (publicDownloadDir != null) {
+                File(publicDownloadDir, BACKUP_FILE_NAME).delete()
             }
         } catch (_: Exception) {}
     }

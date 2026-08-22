@@ -1,6 +1,6 @@
 {
-  "versionCode": 15,
-  "versionName": "2.2.0",
+  "versionCode": 16,
+  "versionName": "2.2.1",
   "apkUrl": "https://github.com/vnnit/HHKungfuTV/releases/latest/download/HHKungfuTV.apk",
-  "changelog": "Cấu hình chữ ký số thống nhất hhkungfu.keystore giúp tự động cài đè cập nhật mượt mà 100%"
+  "changelog": "Tăng cường bảo vệ lịch sử xem phim 4 tầng bộ nhớ, bảo toàn vĩnh viễn dữ liệu"
 }
