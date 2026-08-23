@@ -93,85 +93,46 @@ fun TvPlayerScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    fun generateEmbedHtml(embedUrl: String): String {
-        val fullUrl = if (embedUrl.contains("?")) {
-            "$embedUrl&autoplay=1&autoPlay=true"
-        } else {
-            "$embedUrl?autoplay=1&autoPlay=true"
-        }
-
-        return """
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="utf-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-                <style>
-                    * { box-sizing: border-box; margin: 0; padding: 0; }
-                    html, body {
-                        width: 100vw;
-                        height: 100vh;
-                        background-color: #000000;
-                        overflow: hidden;
-                    }
-                    iframe {
-                        position: absolute;
-                        top: 0;
-                        left: 0;
-                        width: 100%;
-                        height: 100%;
-                        border: 0;
-                    }
-                </style>
-            </head>
-            <body>
-                <iframe 
-                    id="player-iframe" 
-                    src="$fullUrl" 
-                    referrerPolicy="unsafe-url" 
-                    scrolling="no" 
-                    frameborder="0" 
-                    width="100%" 
-                    height="100%" 
-                    allowfullscreen="true" 
-                    webkitallowfullscreen="true" 
-                    mozallowfullscreen="true" 
-                    allow="autoplay *; fullscreen *; encrypted-media *; picture-in-picture *">
-                </iframe>
-                <script>
-                    function tryNativePlay() {
-                        var vids = document.getElementsByTagName('video');
-                        for (var i = 0; i < vids.length; i++) {
-                            try {
-                                vids[i].autoplay = true;
-                                vids[i].muted = false;
-                                vids[i].play();
-                            } catch(e) {}
+    // Injected JavaScript that directly hooks HTML5 video and starts playback via code without user gesture
+    val autoPlayScript = """
+        (function() {
+            function forcePlay() {
+                var vids = document.getElementsByTagName('video');
+                for (var i = 0; i < vids.length; i++) {
+                    var v = vids[i];
+                    if (v && v.paused) {
+                        v.autoplay = true;
+                        v.muted = false;
+                        var p = v.play();
+                        if (p !== undefined) {
+                            p.catch(function() {
+                                v.muted = true;
+                                v.play().then(function() {
+                                    setTimeout(function() { v.muted = false; }, 300);
+                                });
+                            });
                         }
                     }
-                    window.addEventListener('load', function() {
-                        setTimeout(tryNativePlay, 1000);
-                        setTimeout(tryNativePlay, 2000);
-                    });
-                </script>
-            </body>
-            </html>
-        """.trimIndent()
-    }
+                }
+                var btn = document.querySelector('button.play, [aria-label*="Play"], .vjs-big-play-button, .jw-display-icon-container, .art-state');
+                if (btn) {
+                    try { btn.click(); } catch(e) {}
+                }
+            }
+            forcePlay();
+            setInterval(forcePlay, 300);
+        })();
+    """.trimIndent()
 
-    // Exact Remote TV Sequence: Press DOWN to move focus onto Play Triangle -> Wait 250ms -> Press ENTER to Play
     fun pressDownThenEnter() {
         val webView = webViewRef ?: return
         webView.post {
             try {
                 webView.requestFocus()
-
-                // 1. Send DPAD_DOWN to move focus from top text down onto the Play triangle
                 val now = SystemClock.uptimeMillis()
                 webView.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN, 0))
                 webView.dispatchKeyEvent(KeyEvent(now, now + 40, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_DOWN, 0))
 
-                // 2. Wait 250ms for Android TV focus box to settle on the Play button, then press ENTER / DPAD_CENTER
                 webView.postDelayed({
                     try {
                         val enterTime = SystemClock.uptimeMillis()
@@ -182,30 +143,11 @@ fun TvPlayerScreen(
                         webView.dispatchKeyEvent(KeyEvent(enterTime, enterTime, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY, 0))
                         webView.dispatchKeyEvent(KeyEvent(enterTime, enterTime + 40, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY, 0))
 
-                        // Touch center fallback
-                        val width = if (webView.width > 0) webView.width.toFloat() else webView.resources.displayMetrics.widthPixels.toFloat()
-                        val height = if (webView.height > 0) webView.height.toFloat() else webView.resources.displayMetrics.heightPixels.toFloat()
-                        val down = MotionEvent.obtain(enterTime, enterTime, MotionEvent.ACTION_DOWN, width / 2f, height / 2f, 0)
-                        val up = MotionEvent.obtain(enterTime, enterTime + 40, MotionEvent.ACTION_UP, width / 2f, height / 2f, 0)
-                        webView.dispatchTouchEvent(down)
-                        webView.dispatchTouchEvent(up)
-                        down.recycle()
-                        up.recycle()
-
-                        // Direct JS play
-                        val js = """
-                            (function() {
-                                var vids = document.querySelectorAll('video');
-                                for (var i = 0; i < vids.length; i++) {
-                                    try { vids[i].muted = false; vids[i].play(); } catch(e) {}
-                                }
-                            })();
-                        """.trimIndent()
-                        webView.evaluateJavascript(js, null)
+                        webView.evaluateJavascript(autoPlayScript, null)
                     } catch (e: Exception) {
                         Log.e("TvPlayer", "Error in postDelayed enter", e)
                     }
-                }, 250)
+                }, 200)
             } catch (e: Exception) {
                 Log.e("TvPlayer", "Error pressDownThenEnter", e)
             }
@@ -379,7 +321,7 @@ fun TvPlayerScreen(
             is PlayerUiState.Ready -> {
                 val stream = state.streamSource
 
-                // Fullscreen TV WebView Player
+                // Fullscreen TV Native Direct WebView Player (Directly loads embed URL with Referer, no cross-origin iframe barrier)
                 AndroidView(
                     factory = { ctx ->
                         WebView(ctx).apply {
@@ -411,22 +353,31 @@ fun TvPlayerScreen(
                                     return false
                                 }
 
-                                override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
-                                    super.onReceivedError(view, request, error)
-                                    Log.e("TvPlayer", "WebView error: ${error?.description}")
+                                override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                                    super.onPageStarted(view, url, favicon)
+                                    view?.evaluateJavascript(autoPlayScript, null)
+                                }
+
+                                override fun onLoadResource(view: WebView?, url: String?) {
+                                    super.onLoadResource(view, url)
+                                    view?.evaluateJavascript(autoPlayScript, null)
                                 }
 
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     super.onPageFinished(view, url)
-                                    // Smooth sequence: Let the spinner (Image 1) finish loading, then trigger Down -> Enter as soon as Triangle (Image 2) is ready
+                                    view?.evaluateJavascript(autoPlayScript, null)
+
                                     scope.launch {
+                                        delay(800)
+                                        pressDownThenEnter()
                                         delay(1200)
                                         pressDownThenEnter()
-                                        delay(1500)
-                                        pressDownThenEnter()
-                                        delay(2000)
-                                        pressDownThenEnter()
                                     }
+                                }
+
+                                override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
+                                    super.onReceivedError(view, request, error)
+                                    Log.e("TvPlayer", "WebView error: ${error?.description}")
                                 }
                             }
 
@@ -436,27 +387,17 @@ fun TvPlayerScreen(
                                 }
                             }
 
-                            val embedHtml = generateEmbedHtml(stream.embedUrl)
-                            loadDataWithBaseURL(
-                                Constants.BASE_URL + "/",
-                                embedHtml,
-                                "text/html",
-                                "UTF-8",
-                                Constants.BASE_URL + "/"
-                            )
+                            val directUrl = if (stream.embedUrl.contains("?")) "${stream.embedUrl}&autoplay=1" else "${stream.embedUrl}?autoplay=1"
+                            val headers = mapOf("Referer" to "${Constants.BASE_URL}/")
+                            loadUrl(directUrl, headers)
                             webViewRef = this
                             requestFocus()
                         }
                     },
                     update = { view ->
-                        val embedHtml = generateEmbedHtml(stream.embedUrl)
-                        view.loadDataWithBaseURL(
-                            Constants.BASE_URL + "/",
-                            embedHtml,
-                            "text/html",
-                            "UTF-8",
-                            Constants.BASE_URL + "/"
-                        )
+                        val directUrl = if (stream.embedUrl.contains("?")) "${stream.embedUrl}&autoplay=1" else "${stream.embedUrl}?autoplay=1"
+                        val headers = mapOf("Referer" to "${Constants.BASE_URL}/")
+                        view.loadUrl(directUrl, headers)
                         view.requestFocus()
                     },
                     modifier = Modifier.fillMaxSize()

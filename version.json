@@ -1,6 +1,6 @@
 {
-  "versionCode": 20,
-  "versionName": "2.2.5",
+  "versionCode": 21,
+  "versionName": "2.2.6",
   "apkUrl": "https://github.com/vnnit/HHKungfuTV/releases/latest/download/HHKungfuTV.apk",
-  "changelog": "Tối ưu nạp phim siêu mượt không giật lag, tự động kích hoạt phím Xuống và Enter chuẩn xác"
+  "changelog": "Tải trực tiếp trình phát, tự động gọi video.play chủ động từ code mà không cần thao tác"
 }
