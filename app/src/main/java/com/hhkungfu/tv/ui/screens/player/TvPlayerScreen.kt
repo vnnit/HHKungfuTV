@@ -418,15 +418,7 @@ fun TvPlayerScreen(
 
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     super.onPageFinished(view, url)
-                                    // Chờ Trạng thái 1 nạp xong và Trạng thái 2 (nút tam giác) xuất hiện ổn định 1-2s rồi mới bấm
-                                    scope.launch {
-                                        delay(3200) // Đợi trạng thái 2 xuất hiện và nghỉ 1-2s
-                                        pressDownThenEnter()
-                                        delay(2200) // Nhịp 2 dự phòng
-                                        pressDownThenEnter()
-                                        delay(2500) // Nhịp 3 dự phòng
-                                        pressDownThenEnter()
-                                    }
+                                    // Tải xong trang, nhường quyền hoàn toàn cho Remote TV điều khiển mượt mà 100% không delay ảo
                                 }
                             }
 
