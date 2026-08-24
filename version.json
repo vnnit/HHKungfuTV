@@ -1,6 +1,6 @@
 {
-  "versionCode": 24,
-  "versionName": "2.3.2",
+  "versionCode": 25,
+  "versionName": "2.3.3",
   "apkUrl": "https://github.com/vnnit/HHKungfuTV/releases/latest/download/HHKungfuTV.apk",
-  "changelog": "Loại bỏ hoàn toàn delay chờ time, tối ưu nạp phim siêu mượt và điều khiển Remote 1 chạm OK ổn định 100%"
+  "changelog": "Đổi text 'Tập Đã Xem' và bổ sung thêm nút 'Xem Tập Tiếp Theo (Tập ..)' tiện lợi ngay cạnh nút phát"
 }

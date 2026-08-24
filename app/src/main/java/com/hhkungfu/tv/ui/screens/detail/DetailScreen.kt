@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material3.CircularProgressIndicator
@@ -325,7 +326,7 @@ fun DetailScreen(
                                     )
                                 }
 
-                                // Smart Quick Play / Continue Watch Button
+                                // Smart Quick Play / Continue Watch Buttons
                                 val targetEp = if (lastWatched != null) {
                                     currentGroup?.episodes?.firstOrNull { it.slug == lastWatched.episodeSlug } 
                                         ?: currentGroup?.episodes?.firstOrNull() 
@@ -334,43 +335,109 @@ fun DetailScreen(
                                     currentGroup?.episodes?.firstOrNull() ?: movie.episodes.firstOrNull()
                                 }
 
+                                // Find Next Episode (Tập Tiếp Theo)
+                                val currentEpNum = targetEp?.let { Regex("""\d+""").find(it.name)?.value?.toIntOrNull() }
+                                val nextEp = if (targetEp != null) {
+                                    if (currentEpNum != null) {
+                                        val nextEpNum = currentEpNum + 1
+                                        currentGroup?.episodes?.firstOrNull { ep ->
+                                            val num = Regex("""\d+""").find(ep.name)?.value?.toIntOrNull()
+                                            num == nextEpNum
+                                        } ?: run {
+                                            val idx = currentGroup?.episodes?.indexOfFirst { it.slug == targetEp.slug || it.name == targetEp.name } ?: -1
+                                            if (idx > 0) currentGroup?.episodes?.getOrNull(idx - 1)
+                                            else null
+                                        }
+                                    } else {
+                                        val idx = currentGroup?.episodes?.indexOfFirst { it.slug == targetEp.slug || it.name == targetEp.name } ?: -1
+                                        if (idx > 0) currentGroup?.episodes?.getOrNull(idx - 1)
+                                        else null
+                                    }
+                                } else null
+
                                 if (targetEp != null) {
                                     val isContinue = lastWatched != null
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    FocusableTvItem(
-                                        onClick = {
-                                            onPlayEpisode(
-                                                targetEp,
-                                                movie.title,
-                                                state.selectedServer.type,
-                                                if (isContinue) lastWatched?.sv ?: currentGroup?.sv ?: targetEp.sv else currentGroup?.sv ?: targetEp.sv
-                                            )
-                                        },
-                                        shape = RoundedCornerShape(6.dp),
-                                        focusedScale = 1.05f
-                                    ) { isFocused ->
-                                        Row(
-                                            modifier = Modifier
-                                                .background(if (isFocused) Color.White else NetflixRed)
-                                                .padding(horizontal = 20.dp, vertical = 8.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.PlayArrow,
-                                                contentDescription = null,
-                                                tint = if (isFocused) Color.Black else Color.White
-                                            )
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text(
-                                                text = if (isContinue) {
-                                                    "Xem Tiếp (${targetEp.name} - ${if (lastWatched?.sv == "2") "Thuyết Minh" else "Việt Sub"})"
-                                                } else {
-                                                    "Xem Ngay (${targetEp.name} - ${if ((currentGroup?.sv ?: targetEp.sv) == "2") "Thuyết Minh" else "Việt Sub"})"
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // Nút 1: Tập Đã Xem / Xem Ngay
+                                        FocusableTvItem(
+                                            onClick = {
+                                                onPlayEpisode(
+                                                    targetEp,
+                                                    movie.title,
+                                                    state.selectedServer.type,
+                                                    if (isContinue) lastWatched?.sv ?: currentGroup?.sv ?: targetEp.sv else currentGroup?.sv ?: targetEp.sv
+                                                )
+                                            },
+                                            shape = RoundedCornerShape(6.dp),
+                                            focusedScale = 1.05f
+                                        ) { isFocused ->
+                                            Row(
+                                                modifier = Modifier
+                                                    .background(if (isFocused) Color.White else NetflixRed)
+                                                    .padding(horizontal = 18.dp, vertical = 9.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.PlayArrow,
+                                                    contentDescription = null,
+                                                    tint = if (isFocused) Color.Black else Color.White,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = if (isContinue) {
+                                                        "Tập Đã Xem (${targetEp.name} - ${if (lastWatched?.sv == "2") "Thuyết Minh" else "Việt Sub"})"
+                                                    } else {
+                                                        "Xem Ngay (${targetEp.name} - ${if ((currentGroup?.sv ?: targetEp.sv) == "2") "Thuyết Minh" else "Việt Sub"})"
+                                                    },
+                                                    color = if (isFocused) Color.Black else Color.White,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 14.sp
+                                                )
+                                            }
+                                        }
+
+                                        // Nút 2: Xem Tập Tiếp Theo (Tập ..)
+                                        if (nextEp != null) {
+                                            FocusableTvItem(
+                                                onClick = {
+                                                    onPlayEpisode(
+                                                        nextEp,
+                                                        movie.title,
+                                                        state.selectedServer.type,
+                                                        if (isContinue) lastWatched?.sv ?: currentGroup?.sv ?: nextEp.sv else currentGroup?.sv ?: nextEp.sv
+                                                    )
                                                 },
-                                                color = if (isFocused) Color.Black else Color.White,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 14.sp
-                                            )
+                                                shape = RoundedCornerShape(6.dp),
+                                                focusedScale = 1.05f
+                                            ) { isFocused ->
+                                                Row(
+                                                    modifier = Modifier
+                                                        .background(
+                                                            if (isFocused) NetflixGold else Color(0xFF2E2E2E)
+                                                        )
+                                                        .padding(horizontal = 18.dp, vertical = 9.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.SkipNext,
+                                                        contentDescription = null,
+                                                        tint = if (isFocused) Color.Black else Color.White,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        text = "Xem Tập Tiếp Theo (${nextEp.name})",
+                                                        color = if (isFocused) Color.Black else Color.White,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 14.sp
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
