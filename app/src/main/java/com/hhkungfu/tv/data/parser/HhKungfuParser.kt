@@ -190,10 +190,33 @@ class HhKungfuParser {
     }
 
     suspend fun getMovieDetail(movieUrl: String): MovieDetail = withContext(Dispatchers.IO) {
-        movieDetailCache[movieUrl]?.let { return@withContext it }
+        var finalUrl = movieUrl.trim()
+        
+        // If not a valid HTTP/HTTPS url, resolve it automatically
+        if (!finalUrl.startsWith("http://") && !finalUrl.startsWith("https://")) {
+            if (finalUrl.contains("/") || (finalUrl.contains("-") && !finalUrl.contains(" ") && !finalUrl.all { it.isDigit() })) {
+                finalUrl = "${Constants.BASE_URL}/${finalUrl.removePrefix("/")}"
+            } else {
+                // It's a title (e.g. "Thôn Phệ Tinh Không") or numeric ID -> Search for it on HhKungfu!
+                try {
+                    val searchResults = searchMovies(finalUrl)
+                    val matched = searchResults.firstOrNull { 
+                        it.title.equals(finalUrl, ignoreCase = true) || it.title.contains(finalUrl, ignoreCase = true) || finalUrl.contains(it.title, ignoreCase = true)
+                    } ?: searchResults.firstOrNull()
 
-        val html = fetchHtml(movieUrl)
-        val doc = Jsoup.parse(html, movieUrl)
+                    if (matched != null && matched.url.isNotEmpty()) {
+                        finalUrl = matched.url
+                    }
+                } catch (e: Exception) {
+                    Log.e("HhKungfuParser", "Error resolving movie detail url for: $finalUrl", e)
+                }
+            }
+        }
+
+        movieDetailCache[finalUrl]?.let { return@withContext it }
+
+        val html = fetchHtml(finalUrl)
+        val doc = Jsoup.parse(html, finalUrl)
         
         val title = doc.select(".entry-title, .title-1, h1").firstOrNull()?.text()?.trim() ?: "Phim Hoạt Hình"
         val originalTitle = doc.select(".org-title, .original_title, .title-2").firstOrNull()?.text()?.trim() ?: ""

@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,6 +44,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.hhkungfu.tv.data.history.HistoryManager
 import com.hhkungfu.tv.data.history.WatchHistoryItem
+import com.hhkungfu.tv.data.parser.HhKungfuParser
 import com.hhkungfu.tv.ui.components.FocusableTvItem
 import com.hhkungfu.tv.ui.components.TvSidebar
 import com.hhkungfu.tv.ui.theme.NetflixBlack
@@ -52,6 +54,8 @@ import com.hhkungfu.tv.ui.theme.NetflixRed
 import com.hhkungfu.tv.ui.theme.TextPrimary
 import com.hhkungfu.tv.ui.theme.TextSecondary
 import com.hhkungfu.tv.utils.Constants
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun HistoryScreen(
@@ -63,6 +67,52 @@ fun HistoryScreen(
 ) {
     val context = LocalContext.current
     var historyList by remember { mutableStateOf(HistoryManager.getWatchHistory(context)) }
+
+    // Auto-enrich posters and URLs for any history items missing posterUrl or valid URL
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            val parser = HhKungfuParser()
+            var hasUpdates = false
+            val updatedList = historyList.map { item ->
+                if (item.posterUrl.isEmpty() || !item.movieUrl.startsWith("http")) {
+                    try {
+                        val results = parser.searchMovies(item.movieTitle)
+                        val matched = results.firstOrNull { 
+                            it.title.equals(item.movieTitle, ignoreCase = true) || 
+                            it.title.contains(item.movieTitle, ignoreCase = true) || 
+                            item.movieTitle.contains(it.title, ignoreCase = true)
+                        } ?: results.firstOrNull()
+
+                        if (matched != null) {
+                            hasUpdates = true
+                            item.copy(
+                                posterUrl = if (item.posterUrl.isEmpty()) matched.posterUrl else item.posterUrl,
+                                movieUrl = if (!item.movieUrl.startsWith("http")) matched.url else item.movieUrl
+                            )
+                        } else item
+                    } catch (_: Exception) {
+                        item
+                    }
+                } else item
+            }
+            if (hasUpdates) {
+                withContext(Dispatchers.Main) {
+                    historyList = updatedList
+                }
+                for (item in updatedList) {
+                    HistoryManager.saveWatchHistory(
+                        context = context,
+                        movieUrl = item.movieUrl,
+                        movieTitle = item.movieTitle,
+                        posterUrl = item.posterUrl,
+                        episodeSlug = item.episodeSlug,
+                        episodeName = item.episodeName,
+                        sv = item.sv
+                    )
+                }
+            }
+        }
+    }
 
     // Deduplicate history items by movieTitle so each movie appears once in the Grid with its latest watched episode
     val movieHistoryList = remember(historyList) {
@@ -213,9 +263,9 @@ fun HistoryScreen(
                                 val targetUrl = if (item.movieUrl.startsWith("http")) {
                                     item.movieUrl
                                 } else if (item.movieUrl.isNotEmpty() && !item.movieUrl.all { it.isDigit() }) {
-                                    "${Constants.BASE_URL}/${item.movieUrl}"
+                                    "${Constants.BASE_URL}/${item.movieUrl.removePrefix("/")}"
                                 } else {
-                                    // Search by title if movieUrl is not a direct URL
+                                    // Search by title if movieUrl is numeric or empty
                                     item.movieTitle
                                 }
                                 onMovieClick(targetUrl)

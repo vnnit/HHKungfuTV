@@ -1,6 +1,6 @@
 {
-  "versionCode": 26,
-  "versionName": "2.3.4",
+  "versionCode": 27,
+  "versionName": "2.3.5",
   "apkUrl": "https://github.com/vnnit/HHKungfuTV/releases/latest/download/HHKungfuTV.apk",
-  "changelog": "Tối ưu menu Lịch Sử Xem thành Grid thẻ phim (Ảnh poster, tên phim, tập đã xem) và bấm vào để xem chi tiết phim"
+  "changelog": "Sửa lỗi hiển thị ảnh đại diện và sửa lỗi bấm vào mở trang chi tiết phim trong Lịch Sử Xem"
 }
