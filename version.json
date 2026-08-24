@@ -1,6 +1,6 @@
 {
-  "versionCode": 25,
-  "versionName": "2.3.3",
+  "versionCode": 26,
+  "versionName": "2.3.4",
   "apkUrl": "https://github.com/vnnit/HHKungfuTV/releases/latest/download/HHKungfuTV.apk",
-  "changelog": "Đổi text 'Tập Đã Xem' và bổ sung thêm nút 'Xem Tập Tiếp Theo (Tập ..)' tiện lợi ngay cạnh nút phát"
+  "changelog": "Tối ưu menu Lịch Sử Xem thành Grid thẻ phim (Ảnh poster, tên phim, tập đã xem) và bấm vào để xem chi tiết phim"
 }

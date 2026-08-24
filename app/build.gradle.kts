@@ -12,8 +12,8 @@ android {
         applicationId = "com.hhkungfu.tv"
         minSdk = 24
         targetSdk = 34
-        versionCode = 25
-        versionName = "2.3.3"
+        versionCode = 26
+        versionName = "2.3.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

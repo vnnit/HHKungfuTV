@@ -365,11 +365,21 @@ fun DetailScreen(
                                         // Nút 1: Tập Đã Xem / Xem Ngay
                                         FocusableTvItem(
                                             onClick = {
+                                                val svToPlay = if (isContinue) lastWatched?.sv ?: currentGroup?.sv ?: targetEp.sv else currentGroup?.sv ?: targetEp.sv
+                                                HistoryManager.saveWatchHistory(
+                                                    context = context,
+                                                    movieUrl = movie.url,
+                                                    movieTitle = movie.title,
+                                                    posterUrl = movie.posterUrl,
+                                                    episodeSlug = targetEp.slug,
+                                                    episodeName = targetEp.name,
+                                                    sv = svToPlay
+                                                )
                                                 onPlayEpisode(
                                                     targetEp,
                                                     movie.title,
                                                     state.selectedServer.type,
-                                                    if (isContinue) lastWatched?.sv ?: currentGroup?.sv ?: targetEp.sv else currentGroup?.sv ?: targetEp.sv
+                                                    svToPlay
                                                 )
                                             },
                                             shape = RoundedCornerShape(6.dp),
@@ -405,11 +415,21 @@ fun DetailScreen(
                                         if (nextEp != null) {
                                             FocusableTvItem(
                                                 onClick = {
+                                                    val svToPlay = if (isContinue) lastWatched?.sv ?: currentGroup?.sv ?: nextEp.sv else currentGroup?.sv ?: nextEp.sv
+                                                    HistoryManager.saveWatchHistory(
+                                                        context = context,
+                                                        movieUrl = movie.url,
+                                                        movieTitle = movie.title,
+                                                        posterUrl = movie.posterUrl,
+                                                        episodeSlug = nextEp.slug,
+                                                        episodeName = nextEp.name,
+                                                        sv = svToPlay
+                                                    )
                                                     onPlayEpisode(
                                                         nextEp,
                                                         movie.title,
                                                         state.selectedServer.type,
-                                                        if (isContinue) lastWatched?.sv ?: currentGroup?.sv ?: nextEp.sv else currentGroup?.sv ?: nextEp.sv
+                                                        svToPlay
                                                     )
                                                 },
                                                 shape = RoundedCornerShape(6.dp),
@@ -601,6 +621,15 @@ fun DetailScreen(
 
                                         FocusableTvItem(
                                             onClick = {
+                                                HistoryManager.saveWatchHistory(
+                                                    context = context,
+                                                    movieUrl = movie.url,
+                                                    movieTitle = movie.title,
+                                                    posterUrl = movie.posterUrl,
+                                                    episodeSlug = ep.slug,
+                                                    episodeName = ep.name,
+                                                    sv = currentGroup.sv
+                                                )
                                                 onPlayEpisode(ep, movie.title, state.selectedServer.type, currentGroup.sv)
                                             },
                                             shape = RoundedCornerShape(6.dp),
