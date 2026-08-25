@@ -139,11 +139,7 @@ fun TvPlayerScreen(
                     allow="autoplay *; fullscreen *; encrypted-media *; picture-in-picture *">
                 </iframe>
                 <script>
-                    function ensureSoundAndVolume() {
-                        try {
-                            localStorage.removeItem('artplayer_settings');
-                        } catch(e) {}
-
+                    function ensureFullAudio() {
                         var vids = document.getElementsByTagName('video');
                         for (var i = 0; i < vids.length; i++) {
                             try {
@@ -152,90 +148,69 @@ fun TvPlayerScreen(
                                 vids[i].volume = 1.0;
                             } catch(e) {}
                         }
-
-                        var ifr = document.getElementById('player-iframe');
-                        if (ifr && ifr.contentWindow) {
-                            try {
-                                var doc = ifr.contentDocument || ifr.contentWindow.document;
-                                if (doc) {
-                                    var subVids = doc.getElementsByTagName('video');
-                                    for (var j = 0; j < subVids.length; j++) {
-                                        subVids[j].muted = false;
-                                        subVids[j].defaultMuted = false;
-                                        subVids[j].volume = 1.0;
-                                    }
-                                }
-                            } catch(e) {}
-                        }
                     }
 
-                    document.addEventListener('click', ensureSoundAndVolume);
-                    document.addEventListener('keydown', ensureSoundAndVolume);
-                    window.addEventListener('load', ensureSoundAndVolume);
-                    document.addEventListener('DOMContentLoaded', ensureSoundAndVolume);
+                    // Chặn phím Mũi tên Lên/Xuống can thiệp vào âm lượng nội bộ của web player
+                    window.addEventListener('keydown', function(e) {
+                        if (e.keyCode === 40 || e.keyCode === 38) { // ArrowDown / ArrowUp
+                            e.stopPropagation();
+                            ensureFullAudio();
+                        }
+                    }, true);
+
+                    document.addEventListener('click', ensureFullAudio);
+                    window.addEventListener('load', ensureFullAudio);
+                    document.addEventListener('DOMContentLoaded', ensureFullAudio);
+                    setInterval(ensureFullAudio, 500);
                 </script>
             </body>
             </html>
         """.trimIndent()
     }
 
-    // Exact Remote TV Sequence: Press DOWN to move focus onto Play Triangle -> Wait 250ms -> Press ENTER to Play
-    fun pressDownThenEnter() {
+    // Trigger Play / Pause on Android TV cleanly without sending DPAD_DOWN
+    fun triggerPlay() {
         val webView = webViewRef ?: return
         webView.post {
             try {
                 webView.requestFocus()
 
-                // 1. Send DPAD_DOWN to move focus from top text down onto the Play triangle
                 val now = SystemClock.uptimeMillis()
-                webView.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN, 0))
-                webView.dispatchKeyEvent(KeyEvent(now, now + 40, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_DOWN, 0))
+                // 1. Send ENTER / DPAD_CENTER / MEDIA_PLAY
+                webView.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, 0))
+                webView.dispatchKeyEvent(KeyEvent(now, now + 40, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_CENTER, 0))
+                webView.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER, 0))
+                webView.dispatchKeyEvent(KeyEvent(now, now + 40, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER, 0))
+                webView.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY, 0))
+                webView.dispatchKeyEvent(KeyEvent(now, now + 40, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY, 0))
 
-                // 2. Wait 250ms for Android TV focus box to settle on the Play button, then press ENTER / DPAD_CENTER
-                webView.postDelayed({
-                    try {
-                        val enterTime = SystemClock.uptimeMillis()
-                        webView.dispatchKeyEvent(KeyEvent(enterTime, enterTime, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, 0))
-                        webView.dispatchKeyEvent(KeyEvent(enterTime, enterTime + 40, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_CENTER, 0))
-                        webView.dispatchKeyEvent(KeyEvent(enterTime, enterTime, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER, 0))
-                        webView.dispatchKeyEvent(KeyEvent(enterTime, enterTime + 40, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER, 0))
-                        webView.dispatchKeyEvent(KeyEvent(enterTime, enterTime, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY, 0))
-                        webView.dispatchKeyEvent(KeyEvent(enterTime, enterTime + 40, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY, 0))
+                // 2. Touch center fallback
+                val width = if (webView.width > 0) webView.width.toFloat() else webView.resources.displayMetrics.widthPixels.toFloat()
+                val height = if (webView.height > 0) webView.height.toFloat() else webView.resources.displayMetrics.heightPixels.toFloat()
+                val down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, width / 2f, height / 2f, 0)
+                val up = MotionEvent.obtain(now, now + 40, MotionEvent.ACTION_UP, width / 2f, height / 2f, 0)
+                webView.dispatchTouchEvent(down)
+                webView.dispatchTouchEvent(up)
+                down.recycle()
+                up.recycle()
 
-                        // Touch center fallback
-                        val width = if (webView.width > 0) webView.width.toFloat() else webView.resources.displayMetrics.widthPixels.toFloat()
-                        val height = if (webView.height > 0) webView.height.toFloat() else webView.resources.displayMetrics.heightPixels.toFloat()
-                        val down = MotionEvent.obtain(enterTime, enterTime, MotionEvent.ACTION_DOWN, width / 2f, height / 2f, 0)
-                        val up = MotionEvent.obtain(enterTime, enterTime + 40, MotionEvent.ACTION_UP, width / 2f, height / 2f, 0)
-                        webView.dispatchTouchEvent(down)
-                        webView.dispatchTouchEvent(up)
-                        down.recycle()
-                        up.recycle()
-
-                        // Direct JS play & Unmute with Volume 100%
-                        val js = """
-                            (function() {
-                                try {
-                                    localStorage.removeItem('artplayer_settings');
-                                } catch(e) {}
-                                var vids = document.querySelectorAll('video');
-                                for (var i = 0; i < vids.length; i++) {
-                                    try { 
-                                        vids[i].muted = false; 
-                                        vids[i].defaultMuted = false;
-                                        vids[i].volume = 1.0;
-                                        vids[i].play(); 
-                                    } catch(e) {}
-                                }
-                            })();
-                        """.trimIndent()
-                        webView.evaluateJavascript(js, null)
-                    } catch (e: Exception) {
-                        Log.e("TvPlayer", "Error in postDelayed enter", e)
-                    }
-                }, 250)
+                // 3. Direct JS play & Ensure 100% Volume
+                val js = """
+                    (function() {
+                        var vids = document.querySelectorAll('video');
+                        for (var i = 0; i < vids.length; i++) {
+                            try { 
+                                vids[i].muted = false; 
+                                vids[i].defaultMuted = false;
+                                vids[i].volume = 1.0;
+                                vids[i].play(); 
+                            } catch(e) {}
+                        }
+                    })();
+                """.trimIndent()
+                webView.evaluateJavascript(js, null)
             } catch (e: Exception) {
-                Log.e("TvPlayer", "Error pressDownThenEnter", e)
+                Log.e("TvPlayer", "Error triggerPlay", e)
             }
         }
     }
@@ -308,7 +283,7 @@ fun TvPlayerScreen(
                         KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
                         KeyEvent.KEYCODE_MEDIA_PLAY,
                         KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-                            pressDownThenEnter()
+                            triggerPlay()
                             true
                         }
 
@@ -623,7 +598,7 @@ fun TvPlayerScreen(
                                 }
 
                                 FocusableTvItem(
-                                    onClick = { pressDownThenEnter() },
+                                    onClick = { triggerPlay() },
                                     shape = RoundedCornerShape(6.dp),
                                     focusedScale = 1.08f
                                 ) { isFocused ->
