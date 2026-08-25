@@ -1,6 +1,6 @@
 {
-  "versionCode": 29,
-  "versionName": "2.3.7",
+  "versionCode": 30,
+  "versionName": "2.3.8",
   "apkUrl": "https://github.com/vnnit/HHKungfuTV/releases/latest/download/HHKungfuTV.apk",
-  "changelog": "Khóa cứng âm lượng trình phát video luôn luôn đạt 100% cực đại, không bao giờ bị tự giảm nhỏ"
+  "changelog": "Sửa triệt để lỗi bị tắt tiếng (mute), bật âm thanh to rõ cực đại 100% khi phát phim"
 }

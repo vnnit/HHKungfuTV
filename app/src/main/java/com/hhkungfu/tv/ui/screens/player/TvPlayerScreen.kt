@@ -139,22 +139,17 @@ fun TvPlayerScreen(
                     allow="autoplay *; fullscreen *; encrypted-media *; picture-in-picture *">
                 </iframe>
                 <script>
-                    function enforceMaxVolume() {
+                    function ensureSoundAndVolume() {
                         try {
-                            localStorage.setItem('volume', '1');
-                            localStorage.setItem('player_volume', '1');
-                            localStorage.setItem('artplayer_volume', '1');
-                            localStorage.setItem('artplayer_settings', JSON.stringify({ volume: 1 }));
-                            localStorage.setItem('jwplayer.volume', '100');
-                            localStorage.setItem('plyr_volume', '1');
-                            localStorage.setItem('dplayer-volume', '1');
+                            localStorage.removeItem('artplayer_settings');
                         } catch(e) {}
 
                         var vids = document.getElementsByTagName('video');
                         for (var i = 0; i < vids.length; i++) {
                             try {
-                                if (vids[i].volume < 1.0) vids[i].volume = 1.0;
-                                if (vids[i].muted) vids[i].muted = false;
+                                vids[i].muted = false;
+                                vids[i].defaultMuted = false;
+                                vids[i].volume = 1.0;
                             } catch(e) {}
                         }
 
@@ -165,23 +160,19 @@ fun TvPlayerScreen(
                                 if (doc) {
                                     var subVids = doc.getElementsByTagName('video');
                                     for (var j = 0; j < subVids.length; j++) {
-                                        if (subVids[j].volume < 1.0) subVids[j].volume = 1.0;
-                                        if (subVids[j].muted) subVids[j].muted = false;
+                                        subVids[j].muted = false;
+                                        subVids[j].defaultMuted = false;
+                                        subVids[j].volume = 1.0;
                                     }
                                 }
                             } catch(e) {}
                         }
                     }
 
-                    window.addEventListener('load', function() {
-                        enforceMaxVolume();
-                        setInterval(enforceMaxVolume, 500);
-                    });
-                    document.addEventListener('DOMContentLoaded', function() {
-                        enforceMaxVolume();
-                        setInterval(enforceMaxVolume, 500);
-                    });
-                    setInterval(enforceMaxVolume, 500);
+                    document.addEventListener('click', ensureSoundAndVolume);
+                    document.addEventListener('keydown', ensureSoundAndVolume);
+                    window.addEventListener('load', ensureSoundAndVolume);
+                    document.addEventListener('DOMContentLoaded', ensureSoundAndVolume);
                 </script>
             </body>
             </html>
@@ -221,20 +212,17 @@ fun TvPlayerScreen(
                         down.recycle()
                         up.recycle()
 
-                        // Direct JS play & Volume 100% Lock
+                        // Direct JS play & Unmute with Volume 100%
                         val js = """
                             (function() {
                                 try {
-                                    localStorage.setItem('volume', '1');
-                                    localStorage.setItem('artplayer_volume', '1');
-                                    localStorage.setItem('artplayer_settings', JSON.stringify({ volume: 1 }));
-                                    localStorage.setItem('jwplayer.volume', '100');
-                                    localStorage.setItem('plyr_volume', '1');
+                                    localStorage.removeItem('artplayer_settings');
                                 } catch(e) {}
                                 var vids = document.querySelectorAll('video');
                                 for (var i = 0; i < vids.length; i++) {
                                     try { 
                                         vids[i].muted = false; 
+                                        vids[i].defaultMuted = false;
                                         vids[i].volume = 1.0;
                                         vids[i].play(); 
                                     } catch(e) {}
@@ -461,18 +449,14 @@ fun TvPlayerScreen(
                                     val lockVolJs = """
                                         (function() {
                                             try {
-                                                localStorage.setItem('volume', '1');
-                                                localStorage.setItem('player_volume', '1');
-                                                localStorage.setItem('artplayer_volume', '1');
-                                                localStorage.setItem('artplayer_settings', JSON.stringify({ volume: 1 }));
-                                                localStorage.setItem('jwplayer.volume', '100');
-                                                localStorage.setItem('plyr_volume', '1');
+                                                localStorage.removeItem('artplayer_settings');
                                             } catch(e) {}
                                             var vids = document.querySelectorAll('video');
                                             for (var i = 0; i < vids.length; i++) {
                                                 try {
-                                                    vids[i].volume = 1.0;
                                                     vids[i].muted = false;
+                                                    vids[i].defaultMuted = false;
+                                                    vids[i].volume = 1.0;
                                                 } catch(e) {}
                                             }
                                         })();
