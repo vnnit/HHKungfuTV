@@ -139,20 +139,49 @@ fun TvPlayerScreen(
                     allow="autoplay *; fullscreen *; encrypted-media *; picture-in-picture *">
                 </iframe>
                 <script>
-                    function tryNativePlay() {
+                    function enforceMaxVolume() {
+                        try {
+                            localStorage.setItem('volume', '1');
+                            localStorage.setItem('player_volume', '1');
+                            localStorage.setItem('artplayer_volume', '1');
+                            localStorage.setItem('artplayer_settings', JSON.stringify({ volume: 1 }));
+                            localStorage.setItem('jwplayer.volume', '100');
+                            localStorage.setItem('plyr_volume', '1');
+                            localStorage.setItem('dplayer-volume', '1');
+                        } catch(e) {}
+
                         var vids = document.getElementsByTagName('video');
                         for (var i = 0; i < vids.length; i++) {
                             try {
-                                vids[i].autoplay = true;
-                                vids[i].muted = false;
-                                vids[i].play();
+                                if (vids[i].volume < 1.0) vids[i].volume = 1.0;
+                                if (vids[i].muted) vids[i].muted = false;
+                            } catch(e) {}
+                        }
+
+                        var ifr = document.getElementById('player-iframe');
+                        if (ifr && ifr.contentWindow) {
+                            try {
+                                var doc = ifr.contentDocument || ifr.contentWindow.document;
+                                if (doc) {
+                                    var subVids = doc.getElementsByTagName('video');
+                                    for (var j = 0; j < subVids.length; j++) {
+                                        if (subVids[j].volume < 1.0) subVids[j].volume = 1.0;
+                                        if (subVids[j].muted) subVids[j].muted = false;
+                                    }
+                                }
                             } catch(e) {}
                         }
                     }
+
                     window.addEventListener('load', function() {
-                        setTimeout(tryNativePlay, 1000);
-                        setTimeout(tryNativePlay, 2000);
+                        enforceMaxVolume();
+                        setInterval(enforceMaxVolume, 500);
                     });
+                    document.addEventListener('DOMContentLoaded', function() {
+                        enforceMaxVolume();
+                        setInterval(enforceMaxVolume, 500);
+                    });
+                    setInterval(enforceMaxVolume, 500);
                 </script>
             </body>
             </html>
@@ -192,12 +221,23 @@ fun TvPlayerScreen(
                         down.recycle()
                         up.recycle()
 
-                        // Direct JS play
+                        // Direct JS play & Volume 100% Lock
                         val js = """
                             (function() {
+                                try {
+                                    localStorage.setItem('volume', '1');
+                                    localStorage.setItem('artplayer_volume', '1');
+                                    localStorage.setItem('artplayer_settings', JSON.stringify({ volume: 1 }));
+                                    localStorage.setItem('jwplayer.volume', '100');
+                                    localStorage.setItem('plyr_volume', '1');
+                                } catch(e) {}
                                 var vids = document.querySelectorAll('video');
                                 for (var i = 0; i < vids.length; i++) {
-                                    try { vids[i].muted = false; vids[i].play(); } catch(e) {}
+                                    try { 
+                                        vids[i].muted = false; 
+                                        vids[i].volume = 1.0;
+                                        vids[i].play(); 
+                                    } catch(e) {}
                                 }
                             })();
                         """.trimIndent()
@@ -418,7 +458,26 @@ fun TvPlayerScreen(
 
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     super.onPageFinished(view, url)
-                                    // Tải xong trang, nhường quyền hoàn toàn cho Remote TV điều khiển mượt mà 100% không delay ảo
+                                    val lockVolJs = """
+                                        (function() {
+                                            try {
+                                                localStorage.setItem('volume', '1');
+                                                localStorage.setItem('player_volume', '1');
+                                                localStorage.setItem('artplayer_volume', '1');
+                                                localStorage.setItem('artplayer_settings', JSON.stringify({ volume: 1 }));
+                                                localStorage.setItem('jwplayer.volume', '100');
+                                                localStorage.setItem('plyr_volume', '1');
+                                            } catch(e) {}
+                                            var vids = document.querySelectorAll('video');
+                                            for (var i = 0; i < vids.length; i++) {
+                                                try {
+                                                    vids[i].volume = 1.0;
+                                                    vids[i].muted = false;
+                                                } catch(e) {}
+                                            }
+                                        })();
+                                    """.trimIndent()
+                                    view?.evaluateJavascript(lockVolJs, null)
                                 }
                             }
 

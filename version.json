@@ -1,6 +1,6 @@
 {
-  "versionCode": 28,
-  "versionName": "2.3.6",
+  "versionCode": 29,
+  "versionName": "2.3.7",
   "apkUrl": "https://github.com/vnnit/HHKungfuTV/releases/latest/download/HHKungfuTV.apk",
-  "changelog": "Sửa lỗi hiển thị tập mới nhất đã xem trong Lịch Sử Xem và trang Chi Tiết Phim"
+  "changelog": "Khóa cứng âm lượng trình phát video luôn luôn đạt 100% cực đại, không bao giờ bị tự giảm nhỏ"
 }
