@@ -1,6 +1,6 @@
 {
-  "versionCode": 27,
-  "versionName": "2.3.5",
+  "versionCode": 28,
+  "versionName": "2.3.6",
   "apkUrl": "https://github.com/vnnit/HHKungfuTV/releases/latest/download/HHKungfuTV.apk",
-  "changelog": "Sửa lỗi hiển thị ảnh đại diện và sửa lỗi bấm vào mở trang chi tiết phim trong Lịch Sử Xem"
+  "changelog": "Sửa lỗi hiển thị tập mới nhất đã xem trong Lịch Sử Xem và trang Chi Tiết Phim"
 }

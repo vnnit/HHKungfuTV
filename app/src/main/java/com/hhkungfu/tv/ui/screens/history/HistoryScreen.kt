@@ -99,24 +99,22 @@ fun HistoryScreen(
                 withContext(Dispatchers.Main) {
                     historyList = updatedList
                 }
-                for (item in updatedList) {
-                    HistoryManager.saveWatchHistory(
-                        context = context,
-                        movieUrl = item.movieUrl,
-                        movieTitle = item.movieTitle,
-                        posterUrl = item.posterUrl,
-                        episodeSlug = item.episodeSlug,
-                        episodeName = item.episodeName,
-                        sv = item.sv
-                    )
-                }
+                HistoryManager.saveAllHistory(context, updatedList)
             }
         }
     }
 
-    // Deduplicate history items by movieTitle so each movie appears once in the Grid with its latest watched episode
+    // Gom nhóm theo từng bộ phim và lấy chính xác TẬP CAO NHẤT / MỚI NHẤT ĐÃ XEM
     val movieHistoryList = remember(historyList) {
-        historyList.distinctBy { it.movieTitle }
+        historyList
+            .groupBy { it.movieTitle }
+            .map { entry ->
+                entry.value.maxByOrNull { item ->
+                    val epNum = Regex("""\d+""").find(item.episodeName)?.value?.toLongOrNull() ?: 0L
+                    item.timestamp + (epNum * 1000000L)
+                } ?: entry.value.first()
+            }
+            .sortedByDescending { it.timestamp }
     }
 
     Row(

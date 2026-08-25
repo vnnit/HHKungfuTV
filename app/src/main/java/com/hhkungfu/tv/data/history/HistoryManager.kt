@@ -32,11 +32,40 @@ object HistoryManager {
     }
 
     /**
+     * Lưu danh sách lịch sử vào 4 tầng lưu trữ bảo vệ.
+     */
+    fun saveAllHistory(context: Context, items: List<WatchHistoryItem>) {
+        val sorted = items.sortedByDescending { it.timestamp }.take(300)
+        val json = gson.toJson(sorted)
+
+        // 1. SharedPreferences
+        getPrefs(context).edit().putString(KEY_HISTORY, json).apply()
+
+        // 2. filesDir
+        try {
+            val backupFile = File(context.filesDir, BACKUP_FILE_NAME)
+            backupFile.writeText(json)
+        } catch (_: Exception) {}
+
+        // 3. getExternalFilesDir
+        try {
+            val extDir = context.getExternalFilesDir(null)
+            if (extDir != null) {
+                File(extDir, BACKUP_FILE_NAME).writeText(json)
+            }
+        } catch (_: Exception) {}
+
+        // 4. /sdcard/Download/ (Vĩnh viễn không mất)
+        try {
+            val publicDownloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (publicDownloadDir != null && (publicDownloadDir.exists() || publicDownloadDir.mkdirs())) {
+                File(publicDownloadDir, BACKUP_FILE_NAME).writeText(json)
+            }
+        } catch (_: Exception) {}
+    }
+
+    /**
      * Lưu tập phim vừa xem vào lịch sử (Đa tầng 4 lớp bảo vệ).
-     * 1. SharedPreferences (Truy xuất tức thì)
-     * 2. context.filesDir (File nội bộ app)
-     * 3. context.getExternalFilesDir (Bộ nhớ ngoài của app)
-     * 4. /sdcard/Download/ (Bộ nhớ chung hệ thống - Vĩnh viễn không mất kể cả khi gỡ app)
      * Tự động lọc bỏ các mục cũ quá 30 ngày.
      */
     fun saveWatchHistory(
@@ -55,7 +84,7 @@ object HistoryManager {
         // 1. Lọc bỏ các mục quá 30 ngày
         val filteredList = currentList.filter { it.timestamp >= expirationTime }.toMutableList()
 
-        // 2. Xóa mục cùng movieTitle + episodeSlug + sv nếu đã có trước đó để đưa lên đầu
+        // 2. Xóa mục cùng movieTitle + episodeSlug + sv nếu đã có trước đó để cập nhật lên đầu
         filteredList.removeAll { 
             (it.movieUrl == movieUrl || it.movieTitle.equals(movieTitle, ignoreCase = true)) && 
             it.episodeSlug == episodeSlug && 
@@ -74,34 +103,7 @@ object HistoryManager {
         )
         filteredList.add(0, newItem)
 
-        // Giới hạn lưu tối đa 300 mục gần nhất (< 50KB)
-        val trimmedList = filteredList.take(300)
-        val json = gson.toJson(trimmedList)
-
-        // 1. Lưu vào SharedPreferences
-        getPrefs(context).edit().putString(KEY_HISTORY, json).apply()
-
-        // 2. Lưu vào File nội bộ app
-        try {
-            val backupFile = File(context.filesDir, BACKUP_FILE_NAME)
-            backupFile.writeText(json)
-        } catch (_: Exception) {}
-
-        // 3. Lưu vào External Files Dir
-        try {
-            val extDir = context.getExternalFilesDir(null)
-            if (extDir != null) {
-                File(extDir, BACKUP_FILE_NAME).writeText(json)
-            }
-        } catch (_: Exception) {}
-
-        // 4. Lưu vào Thư mục Download công cộng (Bảo tồn vĩnh viễn kể cả khi gỡ app cài lại)
-        try {
-            val publicDownloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            if (publicDownloadDir != null && (publicDownloadDir.exists() || publicDownloadDir.mkdirs())) {
-                File(publicDownloadDir, BACKUP_FILE_NAME).writeText(json)
-            }
-        } catch (_: Exception) {}
+        saveAllHistory(context, filteredList)
     }
 
     /**
@@ -155,7 +157,7 @@ object HistoryManager {
             val type = object : TypeToken<List<WatchHistoryItem>>() {}.type
             val list: List<WatchHistoryItem> = gson.fromJson(json, type) ?: emptyList()
             val expirationTime = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(EXPIRATION_DAYS)
-            list.filter { it.timestamp >= expirationTime }
+            list.filter { it.timestamp >= expirationTime }.sortedByDescending { it.timestamp }
         } catch (_: Exception) {
             emptyList()
         }
@@ -170,11 +172,20 @@ object HistoryManager {
         }
     }
 
+    /**
+     * Lấy tập phim xem gần đây nhất (tập cao nhất / mới nhất đã xem).
+     */
     fun getLastWatchedEpisode(context: Context, movieTitle: String): WatchHistoryItem? {
         val history = getWatchHistory(context)
-        return history.firstOrNull { 
-            it.movieTitle.equals(movieTitle, ignoreCase = true) 
-        }
+            .filter { it.movieTitle.equals(movieTitle, ignoreCase = true) }
+        
+        if (history.isEmpty()) return null
+
+        // Chọn mục có số tập cao nhất hoặc timestamp mới nhất
+        return history.maxByOrNull { item ->
+            val epNum = Regex("""\d+""").find(item.episodeName)?.value?.toLongOrNull() ?: 0L
+            item.timestamp + (epNum * 1000000L)
+        } ?: history.firstOrNull()
     }
 
     fun clearAllHistory(context: Context) {
